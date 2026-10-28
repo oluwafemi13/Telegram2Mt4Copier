@@ -22,6 +22,8 @@ class Prefs(context: Context) {
     // Mode: "alert" or "auto"
     var mode: String get() = str("mode", "alert"); set(v) = put("mode", v)
     val isAuto get() = mode == "auto"
+    var notifyChannelResults: Boolean get() = p.getBoolean("notify_results", true); set(v) = putB("notify_results", v)
+    var verifyPrices: Boolean get() = p.getBoolean("verify_prices", true); set(v) = putB("verify_prices", v)
     var extraVibrate: Boolean get() = p.getBoolean("extra_vibrate", true); set(v) = putB("extra_vibrate", v)
     var copierEnabled: Boolean get() = p.getBoolean("copier_enabled", false); set(v) = putB("copier_enabled", v)
 

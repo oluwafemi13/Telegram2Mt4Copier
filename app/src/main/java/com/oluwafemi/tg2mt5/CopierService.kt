@@ -48,11 +48,20 @@ class CopierService : Service() {
         }
         if (resultsJob?.isActive != true) {
             resultsJob = scope.launch {
+                var round = 0
                 while (isActive) {
                     try {
                         app.processor.checkResults()
                     } catch (_: Exception) {
                     }
+                    // Channel signals are price-checked every 5 minutes.
+                    if (round % 5 == 0) {
+                        try {
+                            app.processor.verifyChannelSignals()
+                        } catch (_: Exception) {
+                        }
+                    }
+                    round++
                     delay(RESULT_CHECK_MS)
                 }
             }

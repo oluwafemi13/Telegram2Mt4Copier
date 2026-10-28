@@ -143,18 +143,17 @@ class TelegramManager(private val app: App) {
             is TdApi.UpdateNewChat -> addChat(obj.chat)
             is TdApi.UpdateChatTitle -> knownChats[obj.chatId]?.let { it.title = obj.title; publishChats() }
             is TdApi.UpdateNewMessage -> onMessage(obj.message)
+            is TdApi.UpdateDeleteMessages ->
+                if (obj.isPermanent && !obj.fromCache && obj.chatId in app.prefs.channelIds) app.processor.onDeleted(obj.chatId, obj.messageIds)
+            is TdApi.UpdateMessageContent ->
+                if (obj.chatId in app.prefs.channelIds) textOf(obj.newContent)?.let { app.processor.onEdited(obj.chatId, obj.messageId, it) }
             else -> {}
         }
     }
 
     private fun onMessage(m: TdApi.Message) {
         if (m.chatId !in app.prefs.channelIds) return
-        val text = when (val c = m.content) {
-            is TdApi.MessageText -> c.text.text
-            is TdApi.MessagePhoto -> c.caption.text
-            is TdApi.MessageDocument -> c.caption.text
-            else -> null
-        }
+        val text = textOf(m.content)
         if (text.isNullOrBlank()) return
         val age = System.currentTimeMillis() / 1000 - m.date
         val source = chatTitle(m.chatId)
@@ -162,11 +161,18 @@ class TelegramManager(private val app: App) {
         val replyKey = reply?.let { "${if (it.chatId != 0L) it.chatId else m.chatId}:${it.messageId}" }
         scope.launch {
             try {
-                app.processor.onMessage(text, source, "${m.chatId}:${m.id}", age, replyKey)
+                app.processor.onMessage(text, source, "${m.chatId}:${m.id}", age, replyKey, m.chatId, m.date.toLong())
             } catch (e: Exception) {
                 app.log.add("error", "Failed to process message from $source", e.toString())
             }
         }
+    }
+
+    private fun textOf(c: TdApi.MessageContent?): String? = when (c) {
+        is TdApi.MessageText -> c.text.text
+        is TdApi.MessagePhoto -> c.caption.text
+        is TdApi.MessageDocument -> c.caption.text
+        else -> null
     }
 
     private fun onAuth(s: TdApi.AuthorizationState) {

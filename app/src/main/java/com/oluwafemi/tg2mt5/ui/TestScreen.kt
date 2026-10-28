@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
 private const val EXAMPLE = "XAUUSD 📉\n\nSell: 4054.5\n\nTP: 4044.5\n\nSL: 4064.5\n\nRisk 1-2% of total Equity"
 
 @Composable
-fun TestScreen(app: App, modifier: Modifier) {
+fun TestScreen(app: App, modifier: Modifier, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var text by remember { mutableStateOf(EXAMPLE) }
     var parsed by remember { mutableStateOf<String?>(null) }
@@ -40,10 +40,7 @@ fun TestScreen(app: App, modifier: Modifier) {
     var busy by remember { mutableStateOf(false) }
 
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-        Gap(12)
-        Text("Test a signal", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Hint("Paste a message from your channel to check how the app reads it, before trusting it with real trades.")
-        Gap()
+        ScreenTitle("Test a signal", "Paste a message from your channel to check how the app reads it, before trusting it with real trades.", onBack)
         Field("Signal message", text, { text = it; parsed = null; preview = null; plan = null }, singleLine = false, minLines = 6)
         Gap()
         Button(onClick = {

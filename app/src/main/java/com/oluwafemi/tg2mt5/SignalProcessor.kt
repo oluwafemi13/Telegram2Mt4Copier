@@ -33,27 +33,32 @@ class SignalProcessor(private val app: App) {
      * Called for every new message in a selected Telegram chat.
      * replyToKey is set when the message is a reply to an earlier message (e.g. a "TP hit" reply to the signal).
      */
-    suspend fun onMessage(text: String, source: String, messageKey: String, ageSeconds: Long, replyToKey: String? = null) {
-        val repliesToSignal = replyToKey != null && prefs.wasProcessed(replyToKey)
+    suspend fun onMessage(
+        text: String, source: String, messageKey: String, ageSeconds: Long, replyToKey: String? = null,
+        chatId: Long = 0, postedAt: Long = System.currentTimeMillis() / 1000,
+    ) {
+        val repliesToSignal = replyToKey != null && (prefs.wasProcessed(replyToKey) || app.ledger.signals.value.any { it.key == replyToKey })
         when (val r = SignalParser.parse(text)) {
             is ParseResult.NotASignal -> {
-                // A reply to one of our signals is that signal's result, whatever words it uses.
-                if (repliesToSignal) logChannelResult(SignalParser.outcomeOf(text), text, source)
+                // A reply to one of the channel's signals is that signal's result, whatever words it uses.
+                if (repliesToSignal) channelResult(SignalParser.outcomeOf(text), text, source, messageKey, chatId, postedAt, replyToKey)
                 return
             }
             is ParseResult.Outcome -> {
-                logChannelResult(r.win, r.text, source)
+                channelResult(r.win, r.text, source, messageKey, chatId, postedAt, replyToKey)
                 return
             }
             is ParseResult.Invalid -> {
                 if (repliesToSignal) {
-                    logChannelResult(SignalParser.outcomeOf(text), text, source)
+                    channelResult(SignalParser.outcomeOf(text), text, source, messageKey, chatId, postedAt, replyToKey)
                     return
                 }
                 log.add("error", "Unreadable signal from $source: ${r.reason}", text.take(300))
                 return
             }
             is ParseResult.Trade -> {
+                // Every signal goes into the channel record, even old ones or ones not traded.
+                app.ledger.recordSignal(messageKey, chatId, source, postedAt, r.signal, text)
                 if (prefs.alreadyProcessed(messageKey)) return
                 val maxAge = (prefs.maxAgeMinutes * 60).toLong()
                 if (maxAge > 0 && ageSeconds > maxAge) {
@@ -66,14 +71,84 @@ class SignalProcessor(private val app: App) {
         }
     }
 
-    /** win = true (TP), false (SL / loss), null (unclear). */
-    private fun logChannelResult(win: Boolean?, text: String, source: String) {
+    /** A result message from the channel: record it, log it, and tell the user straight away. */
+    private fun channelResult(win: Boolean?, text: String, source: String, key: String, chatId: Long, postedAt: Long, replyToKey: String?) {
+        val ev = app.ledger.recordResult(key, chatId, source, postedAt, replyToKey, win, text) ?: return
         val label = when (win) {
             true -> "Channel result: TP hit (win)"
             false -> "Channel result: SL hit (loss)"
             null -> "Channel result"
         }
-        log.add(if (win == false) "outcome_loss" else if (win == true) "outcome_win" else "outcome", "$label · $source", text.trim().take(200))
+        val about = (ev as? LedgerEvent.ResultLinked)?.signal?.let { " for ${it.symbol} ${it.direction}" } ?: ""
+        log.add(if (win == false) "outcome_loss" else if (win == true) "outcome_win" else "outcome", "$label$about · $source", text.trim().take(200))
+        if (prefs.notifyChannelResults) Notifier.signal(app, "$label$about", "${text.trim().take(150)}
+From $source")
+    }
+
+    /** Messages deleted or edited in a watched chat: flag anything that was in the channel record. */
+    fun onDeleted(chatId: Long, ids: LongArray) {
+        for (ev in app.ledger.onDeleted(chatId, ids)) {
+            when (ev) {
+                is LedgerEvent.ResultDeleted -> {
+                    val what = when (ev.win) { false -> "LOSS result"; true -> "win result"; null -> "result" }
+                    val about = ev.signal?.let { " for ${it.symbol} ${it.direction}" } ?: ""
+                    log.add("deleted", "DELETED: channel removed a $what$about · ${ev.chat}", ev.signal?.claimText ?: "")
+                    if (ev.win == false || prefs.notifyChannelResults) Notifier.signal(app, "⚠ ${ev.chat} deleted a $what$about", "The app kept its own record. See the Channel tab.")
+                }
+                is LedgerEvent.SignalDeleted -> {
+                    log.add("deleted", "DELETED: channel removed signal ${ev.signal.symbol} ${ev.signal.direction} · ${ev.signal.chat}", ev.signal.text.take(200))
+                    Notifier.signal(app, "⚠ ${ev.signal.chat} deleted a signal", "${ev.signal.symbol} ${ev.signal.direction}, SL ${fmt(ev.signal.stopLoss)}, TP ${fmt(ev.signal.takeProfit)}")
+                }
+                else -> {}
+            }
+        }
+    }
+
+    fun onEdited(chatId: Long, messageId: Long, newText: String) {
+        when (val ev = app.ledger.onEdited(chatId, messageId, newText)) {
+            is LedgerEvent.SignalEdited -> {
+                log.add("edited", "EDITED: signal ${ev.signal.symbol} ${ev.signal.direction} changed after posting · ${ev.signal.chat}", "Now reads: ${newText.take(200)}
+The original levels are kept in the channel record.")
+                Notifier.signal(app, "⚠ ${ev.signal.chat} edited a signal", "${ev.signal.symbol} ${ev.signal.direction}. Original levels kept.")
+            }
+            is LedgerEvent.ResultEdited -> {
+                log.add("edited", "EDITED: result for ${ev.signal.symbol} ${ev.signal.direction} changed from ${ev.oldClaim} to ${ev.newClaim} · ${ev.signal.chat}", newText.take(200))
+                if (ev.oldClaim != ev.newClaim) Notifier.signal(app, "⚠ ${ev.signal.chat} edited a result", "${ev.signal.symbol}: ${ev.oldClaim} → ${ev.newClaim}")
+            }
+            else -> {}
+        }
+    }
+
+    /** Checks open channel signals against real prices (TP or SL first). Needs MetaApi. */
+    suspend fun verifyChannelSignals() {
+        if (!prefs.verifyPrices || prefs.metaToken.isBlank() || prefs.metaAccountId.isBlank()) return
+        val api = client()
+        val now = System.currentTimeMillis() / 1000
+        val open = app.ledger.signals.value.filter { it.verified == null } // deleted signals are checked too.take(30)
+        for (s in open) {
+            try {
+                val minutes = ((now - s.postedAt) / 60 + 2).toInt()
+                val (tf, limit) = when {
+                    minutes <= 1000 -> "1m" to minutes
+                    minutes <= 5000 -> "5m" to minutes / 5 + 2
+                    else -> "15m" to minOf(minutes / 15 + 2, 1000)
+                }
+                val candles = api.candles(prefs.brokerSymbol(s.symbol), tf, limit)
+                val res = Ledger.verify(s, candles, now) ?: continue
+                app.ledger.setVerified(s.key, res.first, res.second)
+                val claimNote = when {
+                    res.first == "loss" && s.claim == "win" -> " but the channel said TP hit"
+                    res.first == "loss" && s.claim == null -> " and the channel posted no result"
+                    res.first == "loss" && s.claimDeletedAt > 0 -> " and the channel deleted its result"
+                    else -> ""
+                }
+                val kind = when (res.first) { "win" -> "price_win"; "loss" -> "price_loss"; else -> "info" }
+                log.add(kind, "PRICE CHECK: ${s.symbol} ${s.direction} from ${s.chat} → ${res.first.uppercase()}$claimNote", res.second)
+                if (claimNote.isNotEmpty()) Notifier.signal(app, "⚠ Hidden loss: ${s.symbol} ${s.direction}", "${res.second}$claimNote · ${s.chat}")
+            } catch (_: Exception) {
+                // market closed, symbol name wrong or network problem: try again next round
+            }
+        }
     }
 
     private fun alert(signal: Signal, source: String) {

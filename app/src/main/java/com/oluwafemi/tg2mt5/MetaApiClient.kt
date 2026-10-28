@@ -21,6 +21,7 @@ data class TradeResult(val ok: Boolean, val code: String, val message: String, v
 /** Talks to the MetaApi cloud REST API, which connects to your MT5 account. */
 class MetaApiClient(private val token: String, private val accountId: String, region: String) {
     private val base = "https://mt-client-api-v1.$region.agiliumtrade.ai/users/current/accounts/${enc(accountId)}"
+    private val marketBase = "https://mt-market-data-client-api-v1.$region.agiliumtrade.ai/users/current/accounts/${enc(accountId)}"
     private val http = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
@@ -52,6 +53,31 @@ class MetaApiClient(private val token: String, private val accountId: String, re
         val code = o.optString("stringCode")
         val ok = code == "TRADE_RETCODE_DONE" || code == "TRADE_RETCODE_PLACED" || code == "TRADE_RETCODE_DONE_PARTIAL"
         return TradeResult(ok, code, o.optString("message"), o.optString("orderId").ifEmpty { null }, o.optString("positionId").ifEmpty { null })
+    }
+
+    /** Latest candles for a symbol (newest last), from MetaApi's market data service. */
+    suspend fun candles(symbol: String, timeframe: String, limit: Int): List<Candle> {
+        val url = "$marketBase/historical-market-data/symbols/${enc(symbol)}/timeframes/$timeframe/candles?limit=${limit.coerceIn(1, 1000)}"
+        val text = requestText(Request.Builder().url(url).get()).trim()
+        if (!text.startsWith("[")) return emptyList()
+        val arr = JSONArray(text)
+        return (0 until arr.length()).mapNotNull {
+            val o = arr.getJSONObject(it)
+            val t = parseTime(o.optString("time")) ?: return@mapNotNull null
+            Candle(t, o.optDouble("high"), o.optDouble("low"))
+        }.sortedBy { it.time }
+    }
+
+    private fun parseTime(s: String): Long? {
+        for (p in listOf("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", "yyyy-MM-dd'T'HH:mm:ss'Z'")) {
+            try {
+                val f = java.text.SimpleDateFormat(p, java.util.Locale.US)
+                f.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                return f.parse(s)!!.time / 1000
+            } catch (_: Exception) {
+            }
+        }
+        return null
     }
 
     /** All deals (open, close, partial closes) that belong to one position. */

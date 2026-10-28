@@ -8,6 +8,7 @@ class App : Application() {
     lateinit var processor: SignalProcessor
     lateinit var telegram: TelegramManager
     lateinit var trades: TradeStore
+    lateinit var ledger: ChannelLedger
     var nativeLibError: String? = null
 
     override fun onCreate() {
@@ -15,6 +16,7 @@ class App : Application() {
         prefs = Prefs(this)
         log = SignalLog(this)
         trades = TradeStore(this)
+        ledger = ChannelLedger(this)
         processor = SignalProcessor(this)
         telegram = TelegramManager(this)
         Notifier.createChannels(this)

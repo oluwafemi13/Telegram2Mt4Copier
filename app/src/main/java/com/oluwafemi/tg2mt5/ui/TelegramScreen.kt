@@ -31,7 +31,7 @@ import com.oluwafemi.tg2mt5.ChatItem
 import com.oluwafemi.tg2mt5.TgState
 
 @Composable
-fun TelegramScreen(app: App, modifier: Modifier) {
+fun TelegramScreen(app: App, modifier: Modifier, onBack: () -> Unit) {
     val state by app.telegram.state.collectAsStateWithLifecycle()
     val error by app.telegram.lastError.collectAsStateWithLifecycle()
     val chats by app.telegram.chats.collectAsStateWithLifecycle()
@@ -41,12 +41,7 @@ fun TelegramScreen(app: App, modifier: Modifier) {
 
     LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         item {
-            Column {
-                Gap(12)
-                Text("Telegram", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Hint("The app logs into your own Telegram account to read your signal channels.")
-                Gap()
-            }
+            ScreenTitle("Telegram", "The app reads your signal channel through your own Telegram account.", onBack)
         }
 
         if (state == TgState.NoCredentials || editCreds) {
@@ -93,8 +88,8 @@ fun TelegramScreen(app: App, modifier: Modifier) {
             item {
                 Column {
                     Gap()
-                    Text("Choose signal chats (${selected.size} selected)", style = MaterialTheme.typography.titleMedium, color = Gold)
-                    Hint("Tick the channels or groups that post your signals. Only messages from these are read.")
+                    Text("Your signal channels (${selected.size} chosen)", style = MaterialTheme.typography.titleMedium, color = Gold)
+                    Hint("Tick the channel(s) that post your signals. Only these are read; ticked ones are shown first.")
                     Field("Search", filter, { filter = it })
                 }
             }

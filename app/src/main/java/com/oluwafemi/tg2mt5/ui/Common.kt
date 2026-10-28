@@ -1,5 +1,7 @@
 package com.oluwafemi.tg2mt5.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -103,3 +105,55 @@ fun Choice(options: List<Pair<String, String>>, selected: String, onSelect: (Str
 
 @Composable
 fun Gap(h: Int = 8) = Spacer(Modifier.height(h.dp))
+
+/** A small coloured label, e.g. "TP hit" or "Deleted". */
+@Composable
+fun Pill(text: String, color: Color) {
+    androidx.compose.foundation.layout.Box(
+        Modifier
+            .background(color.copy(alpha = 0.18f), androidx.compose.foundation.shape.RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 3.dp),
+    ) {
+        Text(text, color = color, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** A big number with a label under it. */
+@Composable
+fun StatTile(value: String, label: String, color: Color, modifier: Modifier = Modifier) {
+    Column(modifier.padding(vertical = 4.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+        Text(value, style = MaterialTheme.typography.headlineSmall, color = color, fontWeight = FontWeight.Bold)
+        Text(label, style = MaterialTheme.typography.bodySmall, color = Muted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+    }
+}
+
+/** A tappable row with a status mark on the left and an arrow on the right. */
+@Composable
+fun NavRow(title: String, subtitle: String, done: Boolean?, onClick: () -> Unit) {
+    androidx.compose.foundation.layout.Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        if (done != null) {
+            Text(if (done) "✓" else "!", color = if (done) GoodGreen else Gold, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(end = 12.dp), style = MaterialTheme.typography.titleMedium)
+        }
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Muted)
+        }
+        Text("›", color = Muted, style = MaterialTheme.typography.headlineSmall)
+    }
+}
+
+/** Screen title with an optional back arrow. */
+@Composable
+fun ScreenTitle(title: String, subtitle: String = "", onBack: (() -> Unit)? = null) {
+    Column(Modifier.padding(top = 12.dp, bottom = 8.dp)) {
+        if (onBack != null) {
+            Text("‹ Back", color = SkyBlue, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 6.dp))
+        }
+        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Muted)
+    }
+}

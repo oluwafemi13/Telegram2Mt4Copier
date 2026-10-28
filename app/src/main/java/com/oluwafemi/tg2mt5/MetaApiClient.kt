@@ -6,6 +6,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
@@ -53,7 +54,41 @@ class MetaApiClient(private val token: String, private val accountId: String, re
         return TradeResult(ok, code, o.optString("message"), o.optString("orderId").ifEmpty { null }, o.optString("positionId").ifEmpty { null })
     }
 
+    /** All deals (open, close, partial closes) that belong to one position. */
+    suspend fun dealsByPosition(positionId: String): List<Deal> {
+        val text = requestText(Request.Builder().url("$base/history-deals/position/${enc(positionId)}").get())
+        val trimmed = text.trim()
+        val arr = when {
+            trimmed.startsWith("[") -> JSONArray(trimmed)
+            trimmed.startsWith("{") -> JSONObject(trimmed).let { o -> o.optJSONArray("deals") ?: JSONArray().put(o) }
+            else -> JSONArray()
+        }
+        return (0 until arr.length()).map {
+            val o = arr.getJSONObject(it)
+            Deal(
+                o.optString("entryType"), o.optDouble("price", 0.0), o.optDouble("profit", 0.0),
+                o.optDouble("swap", 0.0), o.optDouble("commission", 0.0), o.optString("reason"),
+                o.optString("brokerComment").ifEmpty { o.optString("comment") },
+            )
+        }
+    }
+
     private suspend fun get(path: String) = request(Request.Builder().url(base + path).get())
+
+    private suspend fun requestText(builder: Request.Builder): String = withContext(Dispatchers.IO) {
+        val req = builder.header("auth-token", token).header("Accept", "application/json").build()
+        try {
+            http.newCall(req).execute().use { resp ->
+                val text = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) throw MetaApiException("HTTP ${resp.code}: ${text.take(200)}")
+                text
+            }
+        } catch (e: MetaApiException) {
+            throw e
+        } catch (e: Exception) {
+            throw MetaApiException("Network error: ${e.message}")
+        }
+    }
 
     private suspend fun request(builder: Request.Builder): JSONObject = withContext(Dispatchers.IO) {
         val req = builder.header("auth-token", token).header("Accept", "application/json").build()

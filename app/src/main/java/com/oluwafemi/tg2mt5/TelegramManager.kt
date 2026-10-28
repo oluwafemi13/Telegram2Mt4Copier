@@ -158,9 +158,11 @@ class TelegramManager(private val app: App) {
         if (text.isNullOrBlank()) return
         val age = System.currentTimeMillis() / 1000 - m.date
         val source = chatTitle(m.chatId)
+        val reply = m.replyTo as? TdApi.MessageReplyToMessage
+        val replyKey = reply?.let { "${if (it.chatId != 0L) it.chatId else m.chatId}:${it.messageId}" }
         scope.launch {
             try {
-                app.processor.onMessage(text, source, "${m.chatId}:${m.id}", age)
+                app.processor.onMessage(text, source, "${m.chatId}:${m.id}", age, replyKey)
             } catch (e: Exception) {
                 app.log.add("error", "Failed to process message from $source", e.toString())
             }

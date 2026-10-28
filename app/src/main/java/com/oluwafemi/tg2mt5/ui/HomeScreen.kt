@@ -49,6 +49,12 @@ fun HomeScreen(app: App, modifier: Modifier, onGoTelegram: () -> Unit, onGoSetti
     val entries by app.log.entries.collectAsStateWithLifecycle()
     var running by remember { mutableStateOf(app.prefs.copierEnabled) }
     var batteryOk by remember { mutableStateOf(ignoringBattery(context)) }
+    var filter by remember { mutableStateOf("all") }
+    val shown = when (filter) {
+        "results" -> entries.filter { it.kind in RESULT_KINDS }
+        "problems" -> entries.filter { it.kind in PROBLEM_KINDS }
+        else -> entries
+    }
 
     LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         item {
@@ -102,14 +108,33 @@ fun HomeScreen(app: App, modifier: Modifier, onGoTelegram: () -> Unit, onGoSetti
                 Hint("Recommended: stops Android from pausing the copier when the screen is off.")
             }
         } }
+        item {
+            Section("Results") {
+                val count = { k: String -> entries.count { it.kind == k } }
+                Row(Modifier.fillMaxWidth()) {
+                    Stat("Wins", count("win"), GoodGreen, Modifier.weight(1f))
+                    Stat("Losses", count("loss"), BadRed, Modifier.weight(1f))
+                    Stat("Failed", count("failed"), BadRed, Modifier.weight(1f))
+                    Stat("Skipped", count("skipped"), Gold, Modifier.weight(1f))
+                }
+                val open = app.trades.all().size
+                Hint(
+                    "Wins and losses come from MT5 when an auto-placed trade closes. " +
+                        if (open > 0) "$open trade(s) waiting for a result." else "No trades waiting for a result.",
+                )
+                val ch = entries.count { it.kind == "outcome_win" } to entries.count { it.kind == "outcome_loss" }
+                if (ch.first + ch.second > 0) Hint("Channel reports: ${ch.first} TP hit · ${ch.second} SL hit")
+            }
+        }
         item { Column {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Activity", style = MaterialTheme.typography.titleMedium, color = Gold, modifier = Modifier.weight(1f))
                 if (entries.isNotEmpty()) TextButton(onClick = { app.log.clear() }) { Text("Clear") }
             }
-            if (entries.isEmpty()) Hint("Nothing yet. Signals, alerts and trades will appear here.")
+            Choice(listOf("all" to "All", "results" to "Results", "problems" to "Failed / skipped"), filter) { filter = it }
+            if (shown.isEmpty()) Hint(if (entries.isEmpty()) "Nothing yet. Signals, alerts and trades will appear here." else "Nothing in this view yet.")
         } }
-        items(entries) { LogCard(it) }
+        items(shown) { LogCard(it) }
         item { Gap(16) }
     }
 }
@@ -122,21 +147,39 @@ private fun StatusRow(label: String, value: String, color: Color, onClick: () ->
     }
 }
 
+private val RESULT_KINDS = setOf("win", "loss", "breakeven", "failed", "skipped", "outcome", "outcome_win", "outcome_loss")
+private val PROBLEM_KINDS = setOf("failed", "skipped", "error")
+
+@Composable
+private fun Stat(label: String, value: Int, color: Color, modifier: Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("$value", style = MaterialTheme.typography.titleLarge, color = color, fontWeight = FontWeight.Bold)
+        Hint(label)
+    }
+}
+
+private fun kindLabel(kind: String) = when (kind) {
+    "outcome_win" -> "CHANNEL · TP HIT"
+    "outcome_loss" -> "CHANNEL · SL HIT"
+    "outcome" -> "CHANNEL RESULT"
+    else -> kind.uppercase()
+}
+
 private val timeFmt = SimpleDateFormat("dd MMM HH:mm:ss", Locale.getDefault())
 
 @Composable
 private fun LogCard(e: LogEntry) {
     val color = when (e.kind) {
-        "trade" -> GoodGreen
-        "error" -> BadRed
-        "signal", "alert" -> Gold
-        "outcome" -> SkyBlue
+        "trade", "win", "outcome_win" -> GoodGreen
+        "error", "failed", "loss", "outcome_loss" -> BadRed
+        "signal", "alert", "skipped" -> Gold
+        "outcome", "breakeven" -> SkyBlue
         else -> Muted
     }
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(Modifier.padding(12.dp)) {
             Row {
-                Text(e.kind.uppercase(), color = color, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                Text(kindLabel(e.kind), color = color, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
                 Text(timeFmt.format(Date(e.time)), color = Muted, style = MaterialTheme.typography.labelSmall)
             }
             Text(e.title, style = MaterialTheme.typography.bodyMedium)

@@ -70,6 +70,8 @@ class Prefs(context: Context) {
         return symbolPrefix + symbol + symbolSuffix
     }
 
+    fun wasProcessed(key: String): Boolean = key in str("processed", "").split(',')
+
     // Duplicate protection: remember the last 500 processed messages.
     fun alreadyProcessed(key: String): Boolean {
         val list = str("processed", "").split(',').filter { it.isNotEmpty() }

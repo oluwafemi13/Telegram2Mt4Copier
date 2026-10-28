@@ -50,7 +50,11 @@ fun TestScreen(app: App, modifier: Modifier) {
             preview = null; plan = null
             parsed = when (val r = SignalParser.parse(text)) {
                 is ParseResult.Trade -> "✔ ${r.signal.summary()}\n${app.processor.suggestedLotText(r.signal)}"
-                is ParseResult.Outcome -> "ℹ This looks like a TP/SL result message. It is logged only, no trade."
+                is ParseResult.Outcome -> when (r.win) {
+                    true -> "ℹ Result message: TP hit (win). Logged as a result, no trade."
+                    false -> "ℹ Result message: SL hit (loss). Logged as a result, no trade."
+                    null -> "ℹ Result message (win/loss unclear). Logged as a result, no trade."
+                }
                 is ParseResult.Invalid -> "✖ ${r.reason}"
                 ParseResult.NotASignal -> "✖ Not recognised as a signal (needs BUY/SELL, TP and SL)."
             }
@@ -100,9 +104,16 @@ fun TestScreen(app: App, modifier: Modifier) {
                     scope.launch {
                         preview = try {
                             val r = app.processor.execute(pl)
-                            app.log.add(if (r.ok) "trade" else "error", "Test trade: ${pl.describe()}", "${r.code} ${r.message}")
-                            if (r.ok) "✔ Placed: ${r.code}" else "✖ Rejected: ${r.code} ${r.message}"
+                            if (r.ok) {
+                                app.log.add("trade", "Test trade placed: ${pl.describe()}", "${r.code} ${r.message}")
+                                app.processor.track(pl, r, "Test tab")
+                                "✔ Placed: ${r.code}. Its result will appear in Activity when it closes (copier must be running)."
+                            } else {
+                                app.log.add("failed", "FAILED: test trade rejected · ${pl.describe()}", "${r.code} ${r.message}")
+                                "✖ Rejected: ${r.code} ${r.message}"
+                            }
                         } catch (e: Exception) {
+                            app.log.add("failed", "FAILED: test trade not placed · ${pl.describe()}", e.message ?: e.toString())
                             "✖ ${e.message}"
                         }
                         plan = null; busy = false

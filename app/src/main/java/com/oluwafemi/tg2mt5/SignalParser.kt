@@ -18,7 +18,7 @@ data class Signal(
 sealed class ParseResult {
     data class Trade(val signal: Signal) : ParseResult()
     /** A message reporting that an earlier signal hit TP or SL. Logged only; MT5 closes those trades itself. */
-    data class Outcome(val text: String) : ParseResult()
+    data class Outcome(val text: String, val win: Boolean?) : ParseResult()
     data class Invalid(val reason: String) : ParseResult()
     object NotASignal : ParseResult()
 }
@@ -44,7 +44,26 @@ object SignalParser {
     private val directionRe = Regex("""\b(BUY|SELL)\b(?:\s*(?:LIMIT|STOP|NOW|NEAR|ZONE|AT|@|MARKET))*\s*[:@=\-]?\s*$NUM?""")
     private val tpRe = Regex("""\b(?:TP|TAKE\s*PROFIT)\s*(?:[0-9](?![0-9.,]))?\s*[:@=\-]?\s*$NUM""")
     private val slRe = Regex("""\b(?:SL|STOP\s*LOSS)\s*[:@=\-]?\s*$NUM""")
-    private val outcomeRe = Regex("""\b(HIT|HITTED|SMASHED|CLOSED|PIPS|BOOM|RUNNING|SECURED)\b|✅|❌|🎯|💰""")
+    private val outcomeRe = Regex("""\b(HIT|HITTED|SMASHED|CLOSED|PIPS|BOOM|RUNNING|SECURED|STOPPED|STOP OUT|STOPPED OUT|TRIGGERED|LOSS|LOST|PROFIT|BREAKEVEN|BE)\b|✅|❌|🎯|💰|🔴|🛑|⛔|💔|😔|😞""")
+    private val lossRe = Regex("""\b(SL|STOP\s*LOSS)\s*(WAS\s*)?(HIT|HITTED|TRIGGERED|TAKEN|REACHED)\b|\bSTOPPED\s*OUT\b|\bSTOP\s*OUT\b|\b(LOSS|LOST)\b|-\s*[0-9]+\s*PIPS""")
+    private val winRe = Regex("""\b(TP|TAKE\s*PROFIT)\s*[0-9]?\s*(WAS\s*)?(HIT|HITTED|SMASHED|REACHED|DONE|SECURED)\b|\bPROFIT\b|\+\s*[0-9]+\s*PIPS""")
+    private val lossEmoji = listOf("❌", "🔴", "🛑", "⛔", "💔", "😔", "😞")
+    private val winEmoji = listOf("✅", "🎯", "💰", "🟢", "🔥")
+
+    /** true = the message reports a win (TP hit), false = a loss (SL hit), null = can't tell. */
+    fun outcomeOf(raw: String): Boolean? {
+        val t = raw.uppercase()
+        val loss = lossRe.containsMatchIn(t) || lossEmoji.any { raw.contains(it) }
+        val win = winRe.containsMatchIn(t) || winEmoji.any { raw.contains(it) }
+        return when {
+            loss && !win -> false
+            win && !loss -> true
+            loss && win -> !lossRe.containsMatchIn(t) // words beat emojis when both appear
+            else -> null
+        }
+    }
+
+    private val resultWordRe = Regex("""\b(TP|SL|TAKE PROFIT|STOP LOSS|PIPS|LOSS|LOST|PROFIT|STOPPED|BREAKEVEN)\b""")
 
     fun parse(raw: String): ParseResult {
         // Upper-case and drop emojis/other symbols, but keep the original for the outcome check.
@@ -58,8 +77,8 @@ object SignalParser {
 
         if (dir == null || sl == null || tps.isEmpty()) {
             val looksLikeOutcome = outcomeRe.containsMatchIn(raw.uppercase()) &&
-                (Regex("""\b(TP|SL|TAKE PROFIT|STOP LOSS)\b""").containsMatchIn(text) || raw.contains("✅") || raw.contains("❌"))
-            if (looksLikeOutcome) return ParseResult.Outcome(raw.trim())
+                (resultWordRe.containsMatchIn(text) || (lossEmoji + winEmoji).any { raw.contains(it) })
+            if (looksLikeOutcome) return ParseResult.Outcome(raw.trim(), outcomeOf(raw))
             if (dir != null && (sl == null || tps.isEmpty())) {
                 return ParseResult.Invalid("Signal has no ${if (sl == null) "SL" else "TP"}")
             }

@@ -29,15 +29,27 @@ class SignalProcessor(private val app: App) {
     private val prefs get() = app.prefs
     private val log get() = app.log
 
-    /** Called for every new message in a selected Telegram chat. */
-    suspend fun onMessage(text: String, source: String, messageKey: String, ageSeconds: Long) {
+    /**
+     * Called for every new message in a selected Telegram chat.
+     * replyToKey is set when the message is a reply to an earlier message (e.g. a "TP hit" reply to the signal).
+     */
+    suspend fun onMessage(text: String, source: String, messageKey: String, ageSeconds: Long, replyToKey: String? = null) {
+        val repliesToSignal = replyToKey != null && prefs.wasProcessed(replyToKey)
         when (val r = SignalParser.parse(text)) {
-            is ParseResult.NotASignal -> return
+            is ParseResult.NotASignal -> {
+                // A reply to one of our signals is that signal's result, whatever words it uses.
+                if (repliesToSignal) logChannelResult(SignalParser.outcomeOf(text), text, source)
+                return
+            }
             is ParseResult.Outcome -> {
-                log.add("outcome", "Result from $source", r.text.take(200))
+                logChannelResult(r.win, r.text, source)
                 return
             }
             is ParseResult.Invalid -> {
+                if (repliesToSignal) {
+                    logChannelResult(SignalParser.outcomeOf(text), text, source)
+                    return
+                }
                 log.add("error", "Unreadable signal from $source: ${r.reason}", text.take(300))
                 return
             }
@@ -45,13 +57,23 @@ class SignalProcessor(private val app: App) {
                 if (prefs.alreadyProcessed(messageKey)) return
                 val maxAge = (prefs.maxAgeMinutes * 60).toLong()
                 if (maxAge > 0 && ageSeconds > maxAge) {
-                    log.add("info", "Old signal ignored (${ageSeconds / 60} min old)", r.signal.summary())
+                    log.add("skipped", "SKIPPED: old signal (${ageSeconds / 60} min old) · ${r.signal.symbol} ${r.signal.direction}", r.signal.summary())
                     return
                 }
                 log.add("signal", "Signal from $source", r.signal.summary())
-                if (prefs.isAuto) autoTrade(r.signal) else alert(r.signal, source)
+                if (prefs.isAuto) autoTrade(r.signal, source) else alert(r.signal, source)
             }
         }
+    }
+
+    /** win = true (TP), false (SL / loss), null (unclear). */
+    private fun logChannelResult(win: Boolean?, text: String, source: String) {
+        val label = when (win) {
+            true -> "Channel result: TP hit (win)"
+            false -> "Channel result: SL hit (loss)"
+            null -> "Channel result"
+        }
+        log.add(if (win == false) "outcome_loss" else if (win == true) "outcome_win" else "outcome", "$label · $source", text.trim().take(200))
     }
 
     private fun alert(signal: Signal, source: String) {
@@ -69,24 +91,68 @@ class SignalProcessor(private val app: App) {
         return if (r.ok) "Suggested lot: ${fmt(r.lots)} $unit (${r.note})" else "Lot: ${r.note}"
     }
 
-    private suspend fun autoTrade(signal: Signal) {
+    private suspend fun autoTrade(signal: Signal, source: String) {
         try {
             val plan = plan(signal)
             val res = execute(plan)
             if (res.ok) {
                 log.add("trade", "Trade placed: ${plan.describe()}", "${res.code} ${res.message}\n${plan.lotNote}")
                 Notifier.signal(app, "Trade placed ✔", plan.describe())
+                track(plan, res, source)
             } else {
-                log.add("error", "MT5 rejected: ${plan.describe()}", "${res.code} ${res.message}\n${plan.lotNote}")
-                Notifier.signal(app, "Trade rejected", "${res.code}: ${res.message}")
+                log.add("failed", "FAILED: MT5 rejected · ${plan.describe()}", "${res.code} ${res.message}\n${plan.lotNote}")
+                Notifier.signal(app, "Trade FAILED", "${plan.describe()}\n${res.code}: ${res.message}")
             }
         } catch (e: SkipException) {
-            log.add("info", "Skipped ${signal.symbol} ${signal.direction}: ${e.message}", signal.summary())
+            log.add("skipped", "SKIPPED: ${signal.symbol} ${signal.direction} · ${e.message}", signal.summary())
             Notifier.signal(app, "Signal skipped", "${signal.summary()}\n${e.message}")
         } catch (e: Exception) {
-            log.add("error", "Trade failed: ${signal.symbol} ${signal.direction}", e.message ?: e.toString())
-            Notifier.signal(app, "Trade failed", e.message ?: "Unknown error")
+            log.add("failed", "FAILED: ${signal.symbol} ${signal.direction} not placed", "${e.message ?: e}\n${signal.summary()}")
+            Notifier.signal(app, "Trade FAILED", "${signal.summary()}\n${e.message ?: "Unknown error"}")
         }
+    }
+
+    /** Remembers a placed trade so its final result (TP/SL, profit or loss) can be logged when it closes. */
+    fun track(plan: TradePlan, res: TradeResult, source: String) {
+        val id = res.positionId ?: res.orderId ?: return
+        app.trades.add(
+            TrackedTrade(
+                id, plan.brokerSymbol, plan.signal.isBuy, plan.volume, plan.stopLoss, plan.takeProfit,
+                plan.openPrice != null, System.currentTimeMillis(), source,
+            ),
+        )
+    }
+
+    /** Checks MT5 for trades that have closed since the last check and logs each one's result. Returns how many are still open. */
+    suspend fun checkResults(): Int {
+        val open = app.trades.all()
+        if (open.isEmpty() || prefs.metaToken.isBlank() || prefs.metaAccountId.isBlank()) return open.size
+        val api = client()
+        val currency = try { api.accountInfo().currency } catch (e: Exception) { "" }
+        var stillOpen = 0
+        for (t in open) {
+            try {
+                val outcome = TradeResults.classify(t, api.dealsByPosition(t.positionId))
+                if (outcome == null) {
+                    val ageDays = (System.currentTimeMillis() - t.openedAt) / 86_400_000L
+                    if (ageDays >= 14) {
+                        app.trades.remove(t.positionId)
+                        log.add("info", "Stopped tracking ${t.symbol} ${t.direction} after 14 days", if (t.pending) "Pending order probably never triggered or was cancelled." else "No close found in MT5 history.")
+                    } else {
+                        stillOpen++
+                    }
+                    continue
+                }
+                val (kind, text) = TradeResults.describe(t, outcome, currency)
+                val title = text.substringBefore("\n")
+                log.add(kind, title, text.substringAfter("\n"))
+                Notifier.signal(app, title.substringBefore(" · "), title.substringAfter(" · "))
+                app.trades.remove(t.positionId)
+            } catch (e: Exception) {
+                stillOpen++ // network or API problem: try again next time
+            }
+        }
+        return stillOpen
     }
 
     fun client(): MetaApiClient {

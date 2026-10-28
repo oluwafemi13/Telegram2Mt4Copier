@@ -79,8 +79,10 @@ jobs:
         run: |
           VERSION="1.0.${GITHUB_RUN_NUMBER}"
           cp app/build/outputs/apk/release/app-release.apk "TG2MT5-Copier-${VERSION}.apk"
+          # Same file under a fixed name, so one permanent link always downloads the newest version.
+          cp app/build/outputs/apk/release/app-release.apk "TG2MT5-Copier.apk"
           gh release delete latest-apk --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
-          gh release create latest-apk "TG2MT5-Copier-${VERSION}.apk" \
+          gh release create latest-apk "TG2MT5-Copier-${VERSION}.apk" "TG2MT5-Copier.apk" \
             --repo "$GITHUB_REPOSITORY" \
             --title "Latest APK (v${VERSION})" \
             --notes "Built from commit ${GITHUB_SHA::7}. Download the .apk file below on your Android phone and open it to install." \

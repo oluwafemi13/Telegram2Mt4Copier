@@ -18,7 +18,7 @@ It also understands `BUY`/`SELL`, `GOLD`, `TP1/TP2`, `@` prices and most forex p
 
 ## Install
 
-1. On your Android phone, open this repository's **Releases** page and download the newest `TG2MT5-Copier-x.y.z.apk` under **Latest APK**.
+1. On your Android phone, open <https://github.com/oluwafemi13/Telegram2Mt4Copier/releases/download/latest-apk/TG2MT5-Copier.apk>. This link always downloads the newest version. (It is also on the **Releases** page under **Latest APK**.)
 2. Open the file. If Android asks, allow installing apps from your browser or file manager.
 3. New versions install over the old one; your login and settings are kept.
 

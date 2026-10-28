@@ -60,6 +60,13 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.systemProperty("roborazzi.test.record", "true")
+            it.systemProperty("roborazzi.output.dir", rootProject.file("screenshots").absolutePath)
+        }
+    }
     packaging {
         jniLibs {
             useLegacyPackaging = true
@@ -82,4 +89,12 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     testImplementation("junit:junit:4.13.2")
+    // Screenshot tests of the app screens (run on the build server, not on the phone)
+    testImplementation("org.robolectric:robolectric:4.13")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.20.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.20.0")
+    testImplementation(platform("androidx.compose:compose-bom:2024.09.03"))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

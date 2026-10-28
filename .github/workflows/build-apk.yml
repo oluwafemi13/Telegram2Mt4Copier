@@ -70,7 +70,14 @@ jobs:
       - name: Run tests and build APK
         run: |
           set -o pipefail
-          gradle --no-daemon testReleaseUnitTest assembleRelease 2>&1 | tee build.log
+          gradle --no-daemon testReleaseUnitTest --tests 'com.oluwafemi.tg2mt5.*' assembleRelease 2>&1 | tee build.log
+
+      # Pictures of the main screens with sample data, for checking the design. Never blocks the APK.
+      - name: Screenshots of the app screens
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          gradle --no-daemon testDebugUnitTest --tests 'com.oluwafemi.shots.*' 2>&1 | tail -n 80 | tee shots.log
 
       - name: Publish APK
         if: steps.tdlib.outputs.ready == 'true'
@@ -96,6 +103,9 @@ jobs:
           echo "run=${GITHUB_RUN_NUMBER} sha=${GITHUB_SHA} result=${{ job.status }}" > /tmp/status/status.txt
           [ -f build.log ] && tail -c 60000 build.log > /tmp/status/build.log || true
           for f in app/build/test-results/testReleaseUnitTest/*.xml; do [ -f "$f" ] && cp "$f" /tmp/status/; done
+          [ -f shots.log ] && cp shots.log /tmp/status/ || true
+          mkdir -p /tmp/status/shots
+          find app screenshots -maxdepth 1 -name '*.png' -exec cp {} /tmp/status/shots/ \; 2>/dev/null || true
           cd /tmp/status
           git init -q && git checkout -q -b ci-status
           git config user.name "github-actions" && git config user.email "actions@github.com"

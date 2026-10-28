@@ -81,8 +81,7 @@ class SignalProcessor(private val app: App) {
         }
         val about = (ev as? LedgerEvent.ResultLinked)?.signal?.let { " for ${it.symbol} ${it.direction}" } ?: ""
         log.add(if (win == false) "outcome_loss" else if (win == true) "outcome_win" else "outcome", "$label$about · $source", text.trim().take(200))
-        if (prefs.notifyChannelResults) Notifier.signal(app, "$label$about", "${text.trim().take(150)}
-From $source")
+        if (prefs.notifyChannelResults) Notifier.signal(app, "$label$about", "${text.trim().take(150)}\nFrom $source")
     }
 
     /** Messages deleted or edited in a watched chat: flag anything that was in the channel record. */
@@ -107,8 +106,7 @@ From $source")
     fun onEdited(chatId: Long, messageId: Long, newText: String) {
         when (val ev = app.ledger.onEdited(chatId, messageId, newText)) {
             is LedgerEvent.SignalEdited -> {
-                log.add("edited", "EDITED: signal ${ev.signal.symbol} ${ev.signal.direction} changed after posting · ${ev.signal.chat}", "Now reads: ${newText.take(200)}
-The original levels are kept in the channel record.")
+                log.add("edited", "EDITED: signal ${ev.signal.symbol} ${ev.signal.direction} changed after posting · ${ev.signal.chat}", "Now reads: ${newText.take(200)}\nThe original levels are kept in the channel record.")
                 Notifier.signal(app, "⚠ ${ev.signal.chat} edited a signal", "${ev.signal.symbol} ${ev.signal.direction}. Original levels kept.")
             }
             is LedgerEvent.ResultEdited -> {

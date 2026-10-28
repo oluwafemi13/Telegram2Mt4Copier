@@ -1,0 +1,80 @@
+# Compiles Telegram's official TDLib library for Android from source and
+# publishes it as a GitHub Release. The app build downloads it from there.
+# This only needs to run once (or when updating TDLib), because it takes 1-2 hours.
+name: Build TDLib
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/build-tdlib.yml
+
+permissions:
+  contents: write
+
+env:
+  # Pinned TDLib commit (tdlib/td master, 27 Oct 2026). The app's Telegram code is written against this version.
+  TDLIB_COMMIT: 4c6377aa7386c39217878a9a56d581922ad37ca4
+  TDLIB_TAG: tdlib-4c6377a
+  ABIS: arm64-v8a armeabi-v7a
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    steps:
+      - name: Skip if this TDLib version is already published
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TDLIB_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release $TDLIB_TAG already exists, nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.check.outputs.exists == 'false'
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install build tools
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq g++ git gperf make perl php-cli unzip wget
+
+      - name: Get TDLib source
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          git clone https://github.com/tdlib/td.git
+          cd td && git checkout "$TDLIB_COMMIT"
+
+      - name: Download Android SDK and NDK
+        if: steps.check.outputs.exists == 'false'
+        working-directory: td/example/android
+        run: ./fetch-sdk.sh
+
+      - name: Build OpenSSL
+        if: steps.check.outputs.exists == 'false'
+        working-directory: td/example/android
+        run: ./build-openssl.sh
+
+      - name: Build TDLib (Java interface)
+        if: steps.check.outputs.exists == 'false'
+        working-directory: td/example/android
+        run: ./build-tdlib.sh '' '' '' '' Java 24 "$ABIS"
+
+      - name: Publish release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TDLIB_TAG" td/example/android/tdlib/tdlib.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "TDLib ${TDLIB_COMMIT:0:7} for Android" \
+            --notes "Official TDLib (tdlib/td@${TDLIB_COMMIT}) compiled for Android ($ABIS) with the Java interface. Used by the app build." \
+            --prerelease

@@ -21,7 +21,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.oluwafemi.tg2mt5.App
+import androidx.compose.ui.platform.LocalContext
 import com.oluwafemi.tg2mt5.MetaApiClient
+import com.oluwafemi.tg2mt5.Notifier
 import com.oluwafemi.tg2mt5.fmt
 import kotlinx.coroutines.launch
 
@@ -31,6 +33,8 @@ fun SettingsScreen(app: App, modifier: Modifier) {
     val scope = rememberCoroutineScope()
 
     // Local copies so the screen updates as you type; every change is saved immediately.
+    val context = LocalContext.current
+    var vibrate by remember { mutableStateOf(p.extraVibrate) }
     var mode by remember { mutableStateOf(p.mode) }
     var token by remember { mutableStateOf(p.metaToken) }
     var account by remember { mutableStateOf(p.metaAccountId) }
@@ -66,6 +70,22 @@ fun SettingsScreen(app: App, modifier: Modifier) {
                 if (mode == "auto") "Signals are placed on your MT5 account instantly through MetaApi."
                 else "You get a notification for each signal and place the trade yourself. Free; no MetaApi needed.",
             )
+        }
+
+        Section("Notifications and vibration") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Strong vibration on every signal", Modifier.weight(1f))
+                Switch(checked = vibrate, onCheckedChange = { vibrate = it; p.extraVibrate = it })
+            }
+            Hint("Three strong buzzes for each new signal or trade. Works even when the phone is on silent (not in Do Not Disturb).")
+            Row {
+                OutlinedButton(onClick = {
+                    Notifier.signal(context, "Test signal", "XAUUSD SELL @ 4054.5  TP 4044.5  SL 4064.5\nThis is only a test.")
+                }) { Text("Send test") }
+                Gap()
+                OutlinedButton(onClick = { Notifier.openChannelSettings(context) }) { Text("Phone settings") }
+            }
+            Hint("Phone settings opens Android's options for these alerts: sound, vibration, pop-up and lock screen.")
         }
 
         Section("MetaApi (for Auto-trade)") {

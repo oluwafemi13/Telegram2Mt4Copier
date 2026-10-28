@@ -18,7 +18,8 @@ data class TradePlan(
     val digits: Int,
     val lotNote: String,
 ) {
-    fun describe() = "$actionType $brokerSymbol ${fmt(volume)} lots" +
+    /** e.g. "SELL XAUUSDm 0.01 lots (market ~4054.3)  SL 4064.5  TP 4044.5" */
+    fun describe() = "${actionType.removePrefix("ORDER_TYPE_").replace('_', ' ')} $brokerSymbol ${fmt(volume)} lots" +
         (openPrice?.let { " @ ${fmt(it)}" } ?: " (market ~${fmt(marketPrice)})") +
         "  SL ${fmt(stopLoss)}  TP ${fmt(takeProfit)}"
 }

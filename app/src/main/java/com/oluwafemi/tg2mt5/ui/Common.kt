@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -136,7 +137,7 @@ fun NavRow(title: String, subtitle: String, done: Boolean?, onClick: () -> Unit)
     ) {
         if (done != null) {
             Text(if (done) "✓" else "!", color = if (done) GoodGreen else Gold, fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(end = 12.dp), style = MaterialTheme.typography.titleMedium)
+                modifier = Modifier.width(28.dp), style = MaterialTheme.typography.titleMedium)
         }
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
@@ -153,7 +154,7 @@ fun ScreenTitle(title: String, subtitle: String = "", onBack: (() -> Unit)? = nu
         if (onBack != null) {
             Text("‹ Back", color = SkyBlue, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 6.dp))
         }
-        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
         if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Muted)
     }
 }

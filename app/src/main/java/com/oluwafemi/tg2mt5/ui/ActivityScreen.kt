@@ -107,7 +107,8 @@ fun ActivityRow(e: LogEntry) {
                 Column(Modifier.weight(1f)) { Pill(label, color) }
                 Text(timeFmt.format(Date(e.time)), color = Muted, style = MaterialTheme.typography.labelSmall)
             }
-            Text(e.title, style = MaterialTheme.typography.bodyMedium)
+            // The coloured tag already says WIN / FAILED etc., so drop the same word from the start of the title.
+            Text(e.title.replace(Regex("^(WIN|LOSS|BREAKEVEN|FAILED|SKIPPED|DELETED|EDITED|PRICE CHECK): "), ""), style = MaterialTheme.typography.bodyMedium)
             if (e.detail.isNotBlank()) Hint(e.detail)
         }
     }

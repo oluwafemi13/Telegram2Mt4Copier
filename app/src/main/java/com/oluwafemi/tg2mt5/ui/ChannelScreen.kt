@@ -95,12 +95,12 @@ fun ChannelScreen(app: App, modifier: Modifier, open: (String, String?) -> Unit)
 
         // Red flags
         val flags = buildList {
-            if (st.deletedLossResults > 0) add("${st.deletedLossResults} loss result(s) were deleted after being posted")
-            if (st.deletedWinResults > 0) add("${st.deletedWinResults} win result(s) were deleted")
-            if (st.deletedSignals > 0) add("${st.deletedSignals} signal(s) were deleted after being posted")
-            if (st.editedSignals > 0) add("${st.editedSignals} signal(s) were edited after posting (e.g. SL or TP moved)")
-            if (st.silentLosses > 0) add("${st.silentLosses} signal(s) hit SL by price, but no loss is visible in the channel")
-            if (st.mismatches > 0) add("${st.mismatches} signal(s) were posted as TP hit, but price reached SL first")
+            if (st.deletedLossResults > 0) add("${n(st.deletedLossResults, "loss result was", "loss results were")} deleted after being posted")
+            if (st.deletedWinResults > 0) add("${n(st.deletedWinResults, "win result was", "win results were")} deleted")
+            if (st.deletedSignals > 0) add("${n(st.deletedSignals, "signal was", "signals were")} deleted after being posted")
+            if (st.editedSignals > 0) add("${n(st.editedSignals, "signal was", "signals were")} edited after posting (e.g. SL or TP moved)")
+            if (st.silentLosses > 0) add("${n(st.silentLosses, "signal", "signals")} hit SL by price, but no loss is visible in the channel")
+            if (st.mismatches > 0) add("${n(st.mismatches, "signal was", "signals were")} posted as TP hit, but price reached SL first")
         }
         Card(
             Modifier.fillMaxWidth().padding(vertical = 6.dp),
@@ -150,6 +150,8 @@ fun ChannelScreen(app: App, modifier: Modifier, open: (String, String?) -> Unit)
         )
     }
 }
+
+private fun n(count: Int, one: String, many: String) = "$count ${if (count == 1) one else many}"
 
 @Composable
 private fun RateRow(label: String, rate: Int?, detail: String) {

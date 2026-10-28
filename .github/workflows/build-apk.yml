@@ -1,0 +1,101 @@
+# Builds the installable APK on every push and publishes it on the Releases page
+# under "Latest APK", so it can be downloaded straight to a phone.
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - .github/workflows/build-tdlib.yml
+      - '**.md'
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Build TDLib]
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-apk
+  cancel-in-progress: true
+
+env:
+  TDLIB_TAG: tdlib-4c6377a
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Download TDLib
+        id: tdlib
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release download "$TDLIB_TAG" --repo "$GITHUB_REPOSITORY" --pattern tdlib.zip --dir /tmp; then
+            unzip -q /tmp/tdlib.zip -d app/
+            ls app/tdlib app/tdlib/libs/*
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "TDLib release not published yet: compile check only, no APK will be published."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Without the TDLib release, generate just its Java classes so the code can still be compiled and tested.
+      - name: Generate TDLib Java classes (compile check only)
+        if: steps.tdlib.outputs.ready == 'false'
+        run: |
+          sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq gperf php-cli
+          git clone -q https://github.com/tdlib/td.git /tmp/td && git -C /tmp/td checkout -q 4c6377aa7386c39217878a9a56d581922ad37ca4
+          cd /tmp/td/example/android
+          mkdir build-native && cd build-native
+          cmake -DTD_GENERATE_SOURCE_FILES=ON .. && cmake --build . -j4
+          cd .. && cmake --build build-native --target tl_generate_java
+          php AddIntDef.php org/drinkless/tdlib/TdApi.java
+          mkdir -p "$GITHUB_WORKSPACE/app/tdlib/java/org/drinkless/tdlib"
+          cp org/drinkless/tdlib/TdApi.java ../../example/java/org/drinkless/tdlib/Client.java "$GITHUB_WORKSPACE/app/tdlib/java/org/drinkless/tdlib/"
+
+      - name: Run tests and build APK
+        run: |
+          set -o pipefail
+          gradle --no-daemon testReleaseUnitTest assembleRelease 2>&1 | tee build.log
+
+      - name: Publish APK
+        if: steps.tdlib.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="1.0.${GITHUB_RUN_NUMBER}"
+          cp app/build/outputs/apk/release/app-release.apk "TG2MT5-Copier-${VERSION}.apk"
+          gh release delete latest-apk --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create latest-apk "TG2MT5-Copier-${VERSION}.apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Latest APK (v${VERSION})" \
+            --notes "Built from commit ${GITHUB_SHA::7}. Download the .apk file below on your Android phone and open it to install." \
+            --latest
+
+      # Saves the build result to the ci-status branch so the build can be checked from outside GitHub.
+      - name: Save build status
+        if: always()
+        run: |
+          mkdir -p /tmp/status
+          echo "run=${GITHUB_RUN_NUMBER} sha=${GITHUB_SHA} result=${{ job.status }}" > /tmp/status/status.txt
+          [ -f build.log ] && tail -c 60000 build.log > /tmp/status/build.log || true
+          for f in app/build/test-results/testReleaseUnitTest/*.xml; do [ -f "$f" ] && cp "$f" /tmp/status/; done
+          cd /tmp/status
+          git init -q && git checkout -q -b ci-status
+          git config user.name "github-actions" && git config user.email "actions@github.com"
+          git add -A && git commit -q -m "Build ${GITHUB_RUN_NUMBER}: ${{ job.status }}"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" ci-status

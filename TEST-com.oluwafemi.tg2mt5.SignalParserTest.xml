@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.oluwafemi.tg2mt5.SignalParserTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-10-28T21:08:22" hostname="runnervm48cm3" time="0.055">
+  <properties/>
+  <testcase name="ordinaryChatIsIgnored" classname="com.oluwafemi.tg2mt5.SignalParserTest" time="0.001"/>
+  <testcase name="resultMessagesAreOutcomes" classname="com.oluwafemi.tg2mt5.SignalParserTest" time="0.001"/>
+  <testcase name="parsesBuyWithEmojiAndMultipleTps" classname="com.oluwafemi.tg2mt5.SignalParserTest" time="0.03"/>
+  <testcase name="forexPairWithSlash" classname="com.oluwafemi.tg2mt5.SignalParserTest" time="0.012"/>
+  <testcase name="tpWithoutColonIsNotMisread" classname="com.oluwafemi.tg2mt5.SignalParserTest" time="0.003"/>
+  <testcase name="missingSlIsRejected" classname="com.oluwafemi.tg2mt5.SignalParserTest" time="0.001"/>
+  <testcase name="parsesTheChannelExample" classname="com.oluwafemi.tg2mt5.SignalParserTest" time="0.003"/>
+  <testcase name="wrongSideLevelsAreRejected" classname="com.oluwafemi.tg2mt5.SignalParserTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

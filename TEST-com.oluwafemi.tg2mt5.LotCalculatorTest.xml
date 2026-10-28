@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.oluwafemi.tg2mt5.LotCalculatorTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-28T21:08:22" hostname="runnervm48cm3" time="0.025">
+  <properties/>
+  <testcase name="riskLotsStandardGold" classname="com.oluwafemi.tg2mt5.LotCalculatorTest" time="0.016"/>
+  <testcase name="alertEstimateStandardAndCent" classname="com.oluwafemi.tg2mt5.LotCalculatorTest" time="0.001"/>
+  <testcase name="belowMinimumIsSkippedWhenNotAllowed" classname="com.oluwafemi.tg2mt5.LotCalculatorTest" time="0.001"/>
+  <testcase name="maxLotCaps" classname="com.oluwafemi.tg2mt5.LotCalculatorTest" time="0.003"/>
+  <testcase name="riskLotsCentGold" classname="com.oluwafemi.tg2mt5.LotCalculatorTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

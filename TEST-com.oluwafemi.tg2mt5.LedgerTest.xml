@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.oluwafemi.tg2mt5.LedgerTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-10-28T21:08:22" hostname="runnervm48cm3" time="0.035">
+  <properties/>
+  <testcase name="candlesBeforeTheSignalAreIgnored" classname="com.oluwafemi.tg2mt5.LedgerTest" time="0.018"/>
+  <testcase name="priceCheckFindsWhichCameFirst" classname="com.oluwafemi.tg2mt5.LedgerTest" time="0.005"/>
+  <testcase name="alreadyClaimedSignalIsSkipped" classname="com.oluwafemi.tg2mt5.LedgerTest" time="0.001"/>
+  <testcase name="replyLinksToThatSignal" classname="com.oluwafemi.tg2mt5.LedgerTest" time="0.0"/>
+  <testcase name="differentSymbolDoesNotLink" classname="com.oluwafemi.tg2mt5.LedgerTest" time="0.0"/>
+  <testcase name="statsSeparateVisibleFromEverythingPosted" classname="com.oluwafemi.tg2mt5.LedgerTest" time="0.002"/>
+  <testcase name="nonReplyLinksToNewestOpenSignalInSameChat" classname="com.oluwafemi.tg2mt5.LedgerTest" time="0.001"/>
+  <testcase name="namedSymbolWins" classname="com.oluwafemi.tg2mt5.LedgerTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

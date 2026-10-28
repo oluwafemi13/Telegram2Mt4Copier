@@ -112,7 +112,7 @@ fun ChannelScreen(app: App, modifier: Modifier, open: (String, String?) -> Unit)
                 if (flags.isEmpty()) {
                     Hint("Nothing deleted, edited or hidden in this period, as far as the app has seen.")
                 } else {
-                    flags.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+                    flags.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium, color = Color(0xFFF6DADC)) }
                 }
             }
         }

@@ -165,7 +165,8 @@ private fun kindLabel(kind: String) = when (kind) {
     else -> kind.uppercase()
 }
 
-private val timeFmt = SimpleDateFormat("dd MMM HH:mm:ss", Locale.getDefault())
+// 12-hour clock, e.g. "28 Oct 9:34:05 PM"
+private val timeFmt = SimpleDateFormat("dd MMM h:mm:ss a", Locale.US)
 
 @Composable
 private fun LogCard(e: LogEntry) {

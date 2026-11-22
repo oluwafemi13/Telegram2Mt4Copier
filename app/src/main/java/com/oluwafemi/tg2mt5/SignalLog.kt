@@ -23,6 +23,12 @@ class SignalLog(context: Context) {
         save(list)
     }
 
+    /** Re-reads the file, e.g. after a backup was restored. */
+    @Synchronized
+    fun reload() {
+        _entries.value = load()
+    }
+
     @Synchronized
     fun clear() {
         _entries.value = emptyList()

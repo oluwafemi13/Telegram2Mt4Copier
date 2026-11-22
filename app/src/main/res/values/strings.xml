@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">TG2MT5 Copier</string>
+    <!-- app_name is set per version (flexible / pairs) in app/build.gradle.kts -->
 </resources>

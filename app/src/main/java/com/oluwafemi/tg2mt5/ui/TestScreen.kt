@@ -13,6 +13,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,15 +39,29 @@ fun TestScreen(app: App, modifier: Modifier, onBack: () -> Unit) {
     var plan by remember { mutableStateOf<TradePlan?>(null) }
     var confirm by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    val channels by app.setups.channels.collectAsStateWithLifecycle()
+    val accounts by app.setups.accounts.collectAsStateWithLifecycle()
+    var chatId by remember { mutableStateOf(channels.firstOrNull()?.chatId) }
+    var accId by remember { mutableStateOf(accounts.firstOrNull { it.channelId == chatId }?.id ?: accounts.firstOrNull()?.id) }
+    val words = channels.firstOrNull { it.chatId == chatId }?.words ?: com.oluwafemi.tg2mt5.SignalWords.DEFAULT
+    val account = accounts.firstOrNull { it.id == accId }
 
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-        ScreenTitle("Test a signal", "Paste a message from your channel to check how the app reads it, before trusting it with real trades.", onBack)
+    Page(modifier) {
+        ScreenTitle("Test a signal", "Paste a message from your channel to check how the app reads it and what would be placed, before trusting it with real trades.", onBack)
+        if (channels.isNotEmpty()) {
+            Section("Read it as a message from") {
+                RadioList(channels.map { Triple(it.chatId.toString(), it.title, "") }, chatId?.toString() ?: "", {
+                    chatId = it.toLongOrNull(); parsed = null; plan = null; preview = null
+                    accounts.firstOrNull { a -> a.channelId == chatId }?.let { a -> accId = a.id }
+                })
+            }
+        }
         Field("Signal message", text, { text = it; parsed = null; preview = null; plan = null }, singleLine = false, minLines = 6)
         Gap()
         Button(onClick = {
             preview = null; plan = null
-            parsed = when (val r = SignalParser.parse(text)) {
-                is ParseResult.Trade -> "✔ ${r.signal.summary()}\n${app.processor.suggestedLotText(r.signal)}"
+            parsed = when (val r = SignalParser.parse(text, words)) {
+                is ParseResult.Trade -> "✔ ${r.signal.summary()}\n${app.processor.suggestedLotText(r.signal, account)}"
                 is ParseResult.Outcome -> when (r.win) {
                     true -> "ℹ Result message: TP hit (win). Logged as a result, no trade."
                     false -> "ℹ Result message: SL hit (loss). Logged as a result, no trade."
@@ -58,26 +73,28 @@ fun TestScreen(app: App, modifier: Modifier, onBack: () -> Unit) {
         }) { Text("Check signal") }
         parsed?.let { Gap(4); Hint(it, if (it.startsWith("✔")) GoodGreen else if (it.startsWith("✖")) BadRed else SkyBlue) }
 
-        val trade = (SignalParser.parse(text) as? ParseResult.Trade)?.signal
+        val trade = (SignalParser.parse(text, words) as? ParseResult.Trade)?.signal
         if (parsed?.startsWith("✔") == true && trade != null) {
             Gap(16)
-            Section("Auto-trade preview") {
-                Hint("Uses your MetaApi settings to work out the exact order. Nothing is placed unless you tap Place trade.")
+            Section("Copy preview") {
+                Hint("Works out the exact order for one MT5 account using its settings. Nothing is placed unless you tap Place trade.")
+                if (accounts.isEmpty()) Hint("Add an MT5 account first.", Gold)
+                RadioList(accounts.map { Triple(it.id, it.name, it.status.level.label) }, accId ?: "", { accId = it; plan = null; preview = null })
                 Row {
                     OutlinedButton(enabled = !busy, onClick = {
                         busy = true; preview = "Asking MetaApi…"; plan = null
                         scope.launch {
                             try {
-                                val pl = app.processor.plan(trade)
+                                val acc = account ?: throw IllegalStateException("Choose an MT5 account")
+                                val pl = app.processor.plan(trade, acc)
                                 plan = pl
-                                preview = "✔ ${pl.describe()}\n${pl.lotNote}"
+                                preview = "✔ ${pl.describe()}\n${pl.lotNote}" + if (pl.orderNote.isNotBlank()) "\n${pl.orderNote}" else ""
                             } catch (e: Exception) {
                                 preview = "✖ ${e.message}"
                             }
                             busy = false
                         }
                     }) { Text("Preview order") }
-                    Gap()
                 }
                 preview?.let { Hint(it, if (it.startsWith("✔")) GoodGreen else if (it.startsWith("✖")) BadRed else Muted) }
                 if (plan != null) {
@@ -102,7 +119,7 @@ fun TestScreen(app: App, modifier: Modifier, onBack: () -> Unit) {
                         preview = try {
                             val r = app.processor.execute(pl)
                             if (r.ok) {
-                                app.log.add("trade", "Test trade placed: ${pl.describe()}", "${r.code} ${r.message}")
+                                app.log.add("trade", "Test trade placed on ${pl.account.name}: ${pl.describe()}", "${r.code} ${r.message}")
                                 app.processor.track(pl, r, "Test tab")
                                 "✔ Placed: ${r.code}. Its result will appear in Activity when it closes (copier must be running)."
                             } else {

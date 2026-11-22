@@ -30,8 +30,9 @@ class CopierService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val app = application as App
-        val text = if (app.prefs.isAuto) "Auto-trade mode" else "Alert-only mode"
-        val n = Notifier.service(this, "$text · ${app.prefs.channelIds.size} chat(s) watched")
+        val copying = app.setups.accounts.value.count { it.copyOn && it.channelId != null }
+        val alerting = app.setups.channels.value.count { it.alerts }
+        val n = Notifier.service(this, "$copying account(s) copying · $alerting channel(s) alerting")
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(Notifier.SERVICE_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
@@ -54,10 +55,14 @@ class CopierService : Service() {
                         app.processor.checkResults()
                     } catch (_: Exception) {
                     }
-                    // Channel signals are price-checked every 5 minutes.
+                    // Channel signals are price-checked, and MetaApi status refreshed, every 5 minutes.
                     if (round % 5 == 0) {
                         try {
                             app.processor.verifyChannelSignals()
+                        } catch (_: Exception) {
+                        }
+                        try {
+                            app.processor.refreshAllStatuses()
                         } catch (_: Exception) {
                         }
                     }

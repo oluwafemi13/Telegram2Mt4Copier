@@ -40,7 +40,7 @@ import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ChannelScreen(app: App, modifier: Modifier, open: (String, String?) -> Unit) {
+fun ChannelScreen(app: App, modifier: Modifier, open: (String?) -> Unit) {
     val signals by app.ledger.signals.collectAsStateWithLifecycle()
     val loose by app.ledger.loose.collectAsStateWithLifecycle()
     var period by remember { mutableStateOf("7d") }
@@ -58,9 +58,9 @@ fun ChannelScreen(app: App, modifier: Modifier, open: (String, String?) -> Unit)
     val st = Ledger.stats(signals, loose, since, chat)
     val chats = signals.map { it.chatId to it.chat }.distinctBy { it.first }
     val list = signals.filter { it.postedAt >= since && (chat == null || it.chatId == chat) }
-    val canVerify = app.prefs.verifyPrices && app.prefs.metaToken.isNotBlank() && app.prefs.metaAccountId.isNotBlank()
+    val canVerify = app.prefs.verifyPrices && app.setups.accounts.value.any { it.metaAccountId.isNotBlank() && it.token(app.prefs.metaToken).isNotBlank() }
 
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+    Page(modifier) {
         ScreenTitle("Channel results", "The app's own record of every signal and result, kept even if the channel deletes it")
         Choice(listOf("today" to "Today", "7d" to "7 days", "30d" to "30 days", "all" to "All time"), period) { period = it }
         if (chats.size > 1) {
@@ -78,7 +78,7 @@ fun ChannelScreen(app: App, modifier: Modifier, open: (String, String?) -> Unit)
                 )
             }
             Gap(16)
-            return@Column
+            return@Page
         }
 
         // Trust check: what the channel shows vs. what it actually posted vs. what prices say
@@ -88,8 +88,8 @@ fun ChannelScreen(app: App, modifier: Modifier, open: (String, String?) -> Unit)
             if (canVerify || st.priceWins + st.priceLosses > 0) {
                 RateRow("What real prices say", st.priceRate, "${st.priceWins} reached TP · ${st.priceLosses} reached SL · ${st.priceOpen} still open")
             } else {
-                Hint("Add your MetaApi token (Setup › Trading mode) to also check every signal against real prices. That catches losses the channel never posts.", SkyBlue)
-                TextButton(onClick = { open(Nav.SETUP, "mode") }) { Text("Set up MetaApi ›") }
+                Hint("Link an MT5 account through MetaApi to also check every signal against real prices. That catches losses the channel never posts.", SkyBlue)
+                TextButton(onClick = { open("metaapi") }) { Text("Set up MetaApi ›") }
             }
         }
 

@@ -205,6 +205,10 @@ class ChannelLedger(context: Context) {
         load()
     }
 
+    /** Re-reads the file, e.g. after a backup was restored. */
+    @Synchronized
+    fun reload() = load()
+
     private fun now() = System.currentTimeMillis() / 1000
 
     @Synchronized

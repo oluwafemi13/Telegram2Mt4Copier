@@ -5,9 +5,10 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlin.math.abs
 
-/** Everything decided about a signal before it is sent to MT5. */
+/** Everything decided about a signal for one account before it is sent to MT5. */
 data class TradePlan(
     val signal: Signal,
+    val account: Mt5Account,
     val brokerSymbol: String,
     val actionType: String,
     val volume: Double,
@@ -17,8 +18,9 @@ data class TradePlan(
     val marketPrice: Double,
     val digits: Int,
     val lotNote: String,
+    val orderNote: String = "",
 ) {
-    /** e.g. "SELL XAUUSDm 0.01 lots (market ~4054.3)  SL 4064.5  TP 4044.5" */
+    /** e.g. "SELL LIMIT XAUUSDm 0.01 lots @ 4054.5  SL 4064.5  TP 4044.5" */
     fun describe() = "${actionType.removePrefix("ORDER_TYPE_").replace('_', ' ')} $brokerSymbol ${fmt(volume)} lots" +
         (openPrice?.let { " @ ${fmt(it)}" } ?: " (market ~${fmt(marketPrice)})") +
         "  SL ${fmt(stopLoss)}  TP ${fmt(takeProfit)}"
@@ -26,48 +28,79 @@ data class TradePlan(
 
 class SkipException(message: String) : Exception(message)
 
+/** Which MT5 order to send for a signal. Pure logic, unit-tested. */
+object Orders {
+    data class Decision(val actionType: String, val openPrice: Double?, val note: String = "")
+
+    /**
+     * rule "follow": market signals → market order; LIMIT → limit; STOP → stop; a bare price → market.
+     * rule "market": always a market order.
+     * A limit whose price has already been reached is sent as a market order (you get the same or a better price).
+     * A stop whose price has already been passed is skipped, unless it is still within maxDistance.
+     */
+    fun decide(s: Signal, rule: String, bid: Double, ask: Double, maxDistance: Double): Decision {
+        val market = if (s.isBuy) ask else bid
+        val mkt = Decision(if (s.isBuy) "ORDER_TYPE_BUY" else "ORDER_TYPE_SELL", null)
+        if (rule == "market" || s.entry == null) return mkt
+        val e = s.entry
+        return when (s.kind) {
+            OrderKind.LIMIT -> {
+                val reached = if (s.isBuy) ask <= e else bid >= e
+                if (reached) mkt.copy(note = "Limit price ${fmt(e)} already reached (price ${fmt(market)}), so sent as a market order")
+                else Decision(if (s.isBuy) "ORDER_TYPE_BUY_LIMIT" else "ORDER_TYPE_SELL_LIMIT", e)
+            }
+            OrderKind.STOP -> {
+                val passed = if (s.isBuy) ask >= e else bid <= e
+                if (!passed) Decision(if (s.isBuy) "ORDER_TYPE_BUY_STOP" else "ORDER_TYPE_SELL_STOP", e)
+                else if (maxDistance > 0 && abs(market - e) <= maxDistance) mkt.copy(note = "Stop price ${fmt(e)} already passed but within ${fmt(maxDistance)}, so sent as a market order")
+                else throw SkipException("${s.orderName} price ${fmt(e)} was already passed (price ${fmt(market)})")
+            }
+            else -> mkt
+        }
+    }
+}
+
 class SignalProcessor(private val app: App) {
     private val prefs get() = app.prefs
     private val log get() = app.log
+    private val store get() = app.setups
 
     /**
-     * Called for every new message in a selected Telegram chat.
+     * Called for every new message in a watched Telegram chat.
      * replyToKey is set when the message is a reply to an earlier message (e.g. a "TP hit" reply to the signal).
      */
     suspend fun onMessage(
         text: String, source: String, messageKey: String, ageSeconds: Long, replyToKey: String? = null,
         chatId: Long = 0, postedAt: Long = System.currentTimeMillis() / 1000,
     ) {
+        val channel = store.channel(chatId) ?: return
         val repliesToSignal = replyToKey != null && (prefs.wasProcessed(replyToKey) || app.ledger.signals.value.any { it.key == replyToKey })
-        when (val r = SignalParser.parse(text)) {
+        when (val r = SignalParser.parse(text, channel.words)) {
             is ParseResult.NotASignal -> {
                 // A reply to one of the channel's signals is that signal's result, whatever words it uses.
                 if (repliesToSignal) channelResult(SignalParser.outcomeOf(text), text, source, messageKey, chatId, postedAt, replyToKey)
-                return
             }
-            is ParseResult.Outcome -> {
-                channelResult(r.win, r.text, source, messageKey, chatId, postedAt, replyToKey)
-                return
-            }
+            is ParseResult.Outcome -> channelResult(r.win, r.text, source, messageKey, chatId, postedAt, replyToKey)
             is ParseResult.Invalid -> {
-                if (repliesToSignal) {
-                    channelResult(SignalParser.outcomeOf(text), text, source, messageKey, chatId, postedAt, replyToKey)
-                    return
-                }
-                log.add("error", "Unreadable signal from $source: ${r.reason}", text.take(300))
-                return
+                if (repliesToSignal) channelResult(SignalParser.outcomeOf(text), text, source, messageKey, chatId, postedAt, replyToKey)
+                else log.add("error", "Unreadable signal from $source: ${r.reason}", "${text.take(300)}\nTip: set how this channel writes its signals in Overview › channel › Signal wording.")
             }
             is ParseResult.Trade -> {
                 // Every signal goes into the channel record, even old ones or ones not traded.
                 app.ledger.recordSignal(messageKey, chatId, source, postedAt, r.signal, text)
                 if (prefs.alreadyProcessed(messageKey)) return
-                val maxAge = (prefs.maxAgeMinutes * 60).toLong()
-                if (maxAge > 0 && ageSeconds > maxAge) {
-                    log.add("skipped", "SKIPPED: old signal (${ageSeconds / 60} min old) · ${r.signal.symbol} ${r.signal.direction}", r.signal.summary())
-                    return
-                }
+                if (!prefs.copierEnabled) return // master switch off: record only
+                val linked = store.accountsFor(chatId)
                 log.add("signal", "Signal from $source", r.signal.summary())
-                if (prefs.isAuto) autoTrade(r.signal, source) else alert(r.signal, source)
+                if (channel.alerts && ageSeconds <= ALERT_MAX_AGE_SEC) alert(r.signal, source, linked.firstOrNull())
+                for (acc in linked.filter { it.copyOn }) {
+                    val maxAge = (acc.maxAgeMinutes * 60).toLong()
+                    if (maxAge > 0 && ageSeconds > maxAge) {
+                        log.add("skipped", "SKIPPED: old signal (${ageSeconds / 60} min old) · ${r.signal.symbol} ${r.signal.orderName} · ${acc.name}", r.signal.summary())
+                        continue
+                    }
+                    autoTrade(r.signal, source, acc)
+                }
             }
         }
     }
@@ -82,7 +115,7 @@ class SignalProcessor(private val app: App) {
         }
         val about = (ev as? LedgerEvent.ResultLinked)?.signal?.let { " for ${it.symbol} ${it.direction}" } ?: ""
         log.add(if (win == false) "outcome_loss" else if (win == true) "outcome_win" else "outcome", "$label$about · $source", text.trim().take(200))
-        if (prefs.notifyChannelResults) Notifier.signal(app, "$label$about", "${text.trim().take(150)}\nFrom $source")
+        if (prefs.notifyChannelResults && prefs.copierEnabled) Notifier.signal(app, "$label$about", "${text.trim().take(150)}\nFrom $source")
     }
 
     /** Messages deleted or edited in a watched chat: flag anything that was in the channel record. */
@@ -93,7 +126,7 @@ class SignalProcessor(private val app: App) {
                     val what = when (ev.win) { false -> "LOSS result"; true -> "win result"; null -> "result" }
                     val about = ev.signal?.let { " for ${it.symbol} ${it.direction}" } ?: ""
                     log.add("deleted", "DELETED: channel removed a $what$about · ${ev.chat}", ev.signal?.claimText ?: "")
-                    if (ev.win == false || prefs.notifyChannelResults) Notifier.signal(app, "⚠ ${ev.chat} deleted a $what$about", "The app kept its own record. See the Channel tab.")
+                    if (ev.win == false || prefs.notifyChannelResults) Notifier.signal(app, "⚠ ${ev.chat} deleted a $what$about", "The app kept its own record. See the Results tab.")
                 }
                 is LedgerEvent.SignalDeleted -> {
                     log.add("deleted", "DELETED: channel removed signal ${ev.signal.symbol} ${ev.signal.direction} · ${ev.signal.chat}", ev.signal.text.take(200))
@@ -118,13 +151,17 @@ class SignalProcessor(private val app: App) {
         }
     }
 
-    /** Checks open channel signals against real prices (TP or SL first). Needs MetaApi. */
+    private fun hasMeta(a: Mt5Account) = a.metaAccountId.isNotBlank() && a.token(prefs.metaToken).isNotBlank()
+
+    /** Checks open channel signals against real prices (TP or SL first), using an MT5 account linked to that channel. */
     suspend fun verifyChannelSignals() {
-        if (!prefs.verifyPrices || prefs.metaToken.isBlank() || prefs.metaAccountId.isBlank()) return
-        val api = client()
+        if (!prefs.verifyPrices) return
+        val accounts = store.accounts.value.filter { hasMeta(it) }
+        if (accounts.isEmpty()) return
         val now = System.currentTimeMillis() / 1000
-        val open = app.ledger.signals.value.filter { it.verified == null } // deleted signals are checked too.take(30)
+        val open = app.ledger.signals.value.filter { it.verified == null }.take(30) // deleted signals are checked too
         for (s in open) {
+            val acc = accounts.firstOrNull { it.channelId == s.chatId } ?: accounts.first()
             try {
                 val minutes = ((now - s.postedAt) / 60 + 2).toInt()
                 val (tf, limit) = when {
@@ -132,7 +169,7 @@ class SignalProcessor(private val app: App) {
                     minutes <= 5000 -> "5m" to minutes / 5 + 2
                     else -> "15m" to minOf(minutes / 15 + 2, 1000)
                 }
-                val candles = api.candles(prefs.brokerSymbol(s.symbol), tf, limit)
+                val candles = client(acc).candles(acc.brokerSymbol(s.symbol), tf, limit)
                 val res = Ledger.verify(s, candles, now) ?: continue
                 app.ledger.setVerified(s.key, res.first, res.second)
                 val claimNote = when {
@@ -150,39 +187,41 @@ class SignalProcessor(private val app: App) {
         }
     }
 
-    private fun alert(signal: Signal, source: String) {
-        val lotText = suggestedLotText(signal)
-        Notifier.signal(app, "${signal.symbol} ${signal.direction}", "${signal.summary()}\n$lotText\nFrom $source")
-        log.add("alert", "Alert sent: ${signal.symbol} ${signal.direction}", lotText)
+    private fun alert(signal: Signal, source: String, account: Mt5Account?) {
+        val lotText = suggestedLotText(signal, account)
+        Notifier.signal(app, "${signal.symbol} ${signal.orderName}", "${signal.summary()}\n$lotText\nFrom $source")
+        log.add("alert", "Alert sent: ${signal.symbol} ${signal.orderName} · $source", lotText)
     }
 
-    fun suggestedLotText(signal: Signal): String {
-        val unit = if (prefs.isCent) "cent lots" else "lots"
-        if (prefs.lotMode == "fixed") return "Lot: ${fmt(prefs.fixedLot)} $unit (fixed)"
-        val entry = signal.entry ?: return "Lot: set an entry price to estimate"
-        if (prefs.alertEquity <= 0) return "Lot: enter your equity in Settings to see a risk-based lot"
-        val r = LotCalculator.estimateLots(signal.symbol, prefs.alertEquity, prefs.isCent, prefs.centFactor, prefs.riskPercent, entry, signal.stopLoss)
-        return if (r.ok) "Suggested lot: ${fmt(r.lots)} $unit (${r.note})" else "Lot: ${r.note}"
+    /** Suggested lot for an alert, using the linked account's settings and its last known equity. */
+    fun suggestedLotText(signal: Signal, account: Mt5Account?): String {
+        val a = account ?: return "Link an MT5 account to this channel to see a lot size"
+        val unit = if (a.isCent) "cent lots" else "lots"
+        if (a.lotMode == "fixed") return "Lot: ${fmt(a.fixedLot)} $unit (fixed, ${a.name})"
+        val entry = signal.entry ?: return "Lot: no entry price to estimate from"
+        val equity = a.status.equity ?: return "Lot: risk ${fmt(a.riskPercent)}% (equity not known yet for ${a.name})"
+        val r = LotCalculator.estimateLots(signal.symbol, equity, a.isCent, a.centFactor, a.riskPercent, entry, signal.stopLoss)
+        return if (r.ok) "Suggested lot: ${fmt(r.lots)} $unit for ${a.name} (${r.note})" else "Lot: ${r.note}"
     }
 
-    private suspend fun autoTrade(signal: Signal, source: String) {
+    private suspend fun autoTrade(signal: Signal, source: String, acc: Mt5Account) {
         try {
-            val plan = plan(signal)
+            val plan = plan(signal, acc)
             val res = execute(plan)
             if (res.ok) {
-                log.add("trade", "Trade placed: ${plan.describe()}", "${res.code} ${res.message}\n${plan.lotNote}")
-                Notifier.signal(app, "Trade placed ✔", plan.describe())
+                log.add("trade", "Trade placed on ${acc.name}: ${plan.describe()}", listOf("${res.code} ${res.message}", plan.lotNote, plan.orderNote).filter { it.isNotBlank() }.joinToString("\n"))
+                Notifier.signal(app, "Trade placed ✔ ${acc.name}", plan.describe())
                 track(plan, res, source)
             } else {
-                log.add("failed", "FAILED: MT5 rejected · ${plan.describe()}", "${res.code} ${res.message}\n${plan.lotNote}")
-                Notifier.signal(app, "Trade FAILED", "${plan.describe()}\n${res.code}: ${res.message}")
+                log.add("failed", "FAILED: MT5 rejected · ${acc.name} · ${plan.describe()}", "${res.code} ${res.message}\n${plan.lotNote}")
+                Notifier.signal(app, "Trade FAILED · ${acc.name}", "${plan.describe()}\n${res.code}: ${res.message}")
             }
         } catch (e: SkipException) {
-            log.add("skipped", "SKIPPED: ${signal.symbol} ${signal.direction} · ${e.message}", signal.summary())
-            Notifier.signal(app, "Signal skipped", "${signal.summary()}\n${e.message}")
+            log.add("skipped", "SKIPPED: ${signal.symbol} ${signal.orderName} · ${acc.name} · ${e.message}", signal.summary())
+            Notifier.signal(app, "Signal skipped · ${acc.name}", "${signal.summary()}\n${e.message}")
         } catch (e: Exception) {
-            log.add("failed", "FAILED: ${signal.symbol} ${signal.direction} not placed", "${e.message ?: e}\n${signal.summary()}")
-            Notifier.signal(app, "Trade FAILED", "${signal.summary()}\n${e.message ?: "Unknown error"}")
+            log.add("failed", "FAILED: ${signal.symbol} ${signal.orderName} not placed · ${acc.name}", "${e.message ?: e}\n${signal.summary()}")
+            Notifier.signal(app, "Trade FAILED · ${acc.name}", "${signal.summary()}\n${e.message ?: "Unknown error"}")
         }
     }
 
@@ -192,7 +231,7 @@ class SignalProcessor(private val app: App) {
         app.trades.add(
             TrackedTrade(
                 id, plan.brokerSymbol, plan.signal.isBuy, plan.volume, plan.stopLoss, plan.takeProfit,
-                plan.openPrice != null, System.currentTimeMillis(), source,
+                plan.openPrice != null, System.currentTimeMillis(), source, plan.account.id, plan.account.name,
             ),
         )
     }
@@ -200,85 +239,110 @@ class SignalProcessor(private val app: App) {
     /** Checks MT5 for trades that have closed since the last check and logs each one's result. Returns how many are still open. */
     suspend fun checkResults(): Int {
         val open = app.trades.all()
-        if (open.isEmpty() || prefs.metaToken.isBlank() || prefs.metaAccountId.isBlank()) return open.size
-        val api = client()
-        val currency = try { api.accountInfo().currency } catch (e: Exception) { "" }
+        if (open.isEmpty()) return 0
         var stillOpen = 0
-        for (t in open) {
-            try {
-                val outcome = TradeResults.classify(t, api.dealsByPosition(t.positionId))
-                if (outcome == null) {
-                    val ageDays = (System.currentTimeMillis() - t.openedAt) / 86_400_000L
-                    if (ageDays >= 14) {
-                        app.trades.remove(t.positionId)
-                        log.add("info", "Stopped tracking ${t.symbol} ${t.direction} after 14 days", if (t.pending) "Pending order probably never triggered or was cancelled." else "No close found in MT5 history.")
-                    } else {
-                        stillOpen++
+        for ((accId, trades) in open.groupBy { it.accountId }) {
+            // Trades from version 1.x have no account id: they belong to the first (migrated) account.
+            val acc = store.account(accId) ?: store.accounts.value.firstOrNull()
+            if (acc == null || !hasMeta(acc)) { stillOpen += trades.size; continue }
+            val api = client(acc)
+            val currency = try { api.accountInfo().currency } catch (e: Exception) { "" }
+            for (t in trades) {
+                try {
+                    val outcome = TradeResults.classify(t, api.dealsByPosition(t.positionId))
+                    if (outcome == null) {
+                        val ageDays = (System.currentTimeMillis() - t.openedAt) / 86_400_000L
+                        if (ageDays >= 14) {
+                            app.trades.remove(t.positionId)
+                            log.add("info", "Stopped tracking ${t.symbol} ${t.direction} on ${acc.name} after 14 days", if (t.pending) "Pending order probably never triggered or was cancelled." else "No close found in MT5 history.")
+                        } else {
+                            stillOpen++
+                        }
+                        continue
                     }
-                    continue
+                    val (kind, text) = TradeResults.describe(t.copy(accountName = t.accountName.ifBlank { acc.name }), outcome, currency)
+                    val title = text.substringBefore("\n")
+                    log.add(kind, title, text.substringAfter("\n"))
+                    Notifier.signal(app, title.substringBefore(" · "), title.substringAfter(" · "))
+                    app.trades.remove(t.positionId)
+                } catch (e: Exception) {
+                    stillOpen++ // network or API problem: try again next time
                 }
-                val (kind, text) = TradeResults.describe(t, outcome, currency)
-                val title = text.substringBefore("\n")
-                log.add(kind, title, text.substringAfter("\n"))
-                Notifier.signal(app, title.substringBefore(" · "), title.substringAfter(" · "))
-                app.trades.remove(t.positionId)
-            } catch (e: Exception) {
-                stillOpen++ // network or API problem: try again next time
             }
         }
         return stillOpen
     }
 
-    fun client(): MetaApiClient {
-        if (prefs.metaToken.isBlank() || prefs.metaAccountId.isBlank()) throw SkipException("MetaApi token or account ID not set")
-        return MetaApiClient(prefs.metaToken, prefs.metaAccountId, prefs.metaRegion)
+    fun client(acc: Mt5Account): MetaApiClient {
+        val token = acc.token(prefs.metaToken)
+        if (token.isBlank()) throw SkipException("MetaApi token not set (Setup › MetaApi)")
+        if (acc.metaAccountId.isBlank()) throw SkipException("MetaApi account ID not set for ${acc.name}")
+        return MetaApiClient(token, acc.metaAccountId, acc.region.ifBlank { "new-york" })
     }
 
-    /** Works out symbol, order type, lot size and prices without placing anything. */
-    suspend fun plan(signal: Signal): TradePlan {
-        val api = client()
-        val sym = prefs.brokerSymbol(signal.symbol)
+    /** Asks MetaApi whether the account is linked and running, and saves the answer for the status badge. */
+    suspend fun refreshStatus(acc: Mt5Account): MetaStatus {
+        val now = System.currentTimeMillis()
+        val st = try {
+            val token = acc.token(prefs.metaToken)
+            if (token.isBlank()) throw MetaApiException("Add your MetaApi token in Setup › MetaApi")
+            if (acc.metaAccountId.isBlank()) throw MetaApiException("Add this account's MetaApi account ID")
+            // The account-management API works without knowing the region; it tells us the region.
+            var s = MetaApiClient(token, acc.metaAccountId, acc.region.ifBlank { "new-york" }).accountStatus()
+            if (s.state == "DEPLOYED" && s.connection == "CONNECTED") {
+                try {
+                    val info = MetaApiClient(token, acc.metaAccountId, s.region.ifBlank { acc.region.ifBlank { "new-york" } }).accountInfo()
+                    s = s.copy(broker = info.broker, balance = info.balance, equity = info.equity, currency = info.currency, login = info.login.ifBlank { s.login })
+                } catch (_: Exception) {
+                }
+            }
+            s.copy(checkedAt = now)
+        } catch (e: Exception) {
+            acc.status.copy(error = e.message ?: e.toString(), checkedAt = now)
+        }
+        store.updateStatus(acc.id, st)
+        return st
+    }
+
+    suspend fun refreshAllStatuses() {
+        for (a in store.accounts.value) if (a.metaAccountId.isNotBlank()) refreshStatus(a)
+    }
+
+    /** Works out symbol, order type, lot size and prices for one account without placing anything. */
+    suspend fun plan(signal: Signal, acc: Mt5Account): TradePlan {
+        val api = client(acc)
+        val sym = acc.brokerSymbol(signal.symbol)
         val price = api.price(sym)
         val spec = api.spec(sym)
         val market = if (signal.isBuy) price.ask else price.bid
-        if (market <= 0) throw SkipException("No price for $sym (market closed?)")
+        if (market <= 0) throw SkipException("No price for $sym (market closed or wrong symbol name?)")
 
-        signal.entry?.let { entry ->
-            if (prefs.maxDistance > 0 && abs(market - entry) > prefs.maxDistance)
-                throw SkipException("price ${fmt(market)} is more than ${fmt(prefs.maxDistance)} away from entry ${fmt(entry)}")
-        }
+        val tp = if (acc.tpChoice == "last") signal.takeProfits.last() else signal.takeProfits.first()
+        val decision = Orders.decide(signal, acc.orderRule, price.bid, price.ask, acc.maxDistance)
+        val isMarket = decision.openPrice == null
 
-        val tp = if (prefs.tpChoice == "last") signal.takeProfits.last() else signal.takeProfits.first()
-        val pending = prefs.orderType == "pending" && signal.entry != null
-        val action: String
-        val openPrice: Double?
-        val riskEntry: Double
-        if (pending) {
-            val e = signal.entry!!
-            action = if (signal.isBuy) (if (e < price.ask) "ORDER_TYPE_BUY_LIMIT" else "ORDER_TYPE_BUY_STOP")
-            else (if (e > price.bid) "ORDER_TYPE_SELL_LIMIT" else "ORDER_TYPE_SELL_STOP")
-            openPrice = e
-            riskEntry = e
-        } else {
+        if (isMarket) {
+            signal.entry?.let { entry ->
+                if (acc.maxDistance > 0 && abs(market - entry) > acc.maxDistance && signal.kind != OrderKind.LIMIT)
+                    throw SkipException("price ${fmt(market)} is more than ${fmt(acc.maxDistance)} away from entry ${fmt(entry)}")
+            }
             if (signal.isBuy && (market <= signal.stopLoss || market >= tp)) throw SkipException("price ${fmt(market)} is already past SL or TP")
             if (!signal.isBuy && (market >= signal.stopLoss || market <= tp)) throw SkipException("price ${fmt(market)} is already past SL or TP")
-            action = if (signal.isBuy) "ORDER_TYPE_BUY" else "ORDER_TYPE_SELL"
-            openPrice = null
-            riskEntry = market
         }
+        val riskEntry = decision.openPrice ?: market
 
-        val lot = if (prefs.lotMode == "fixed") {
-            LotCalculator.finish(prefs.fixedLot, spec.minVolume, spec.maxVolume, spec.volumeStep, true, prefs.maxLot, "fixed lot")
+        val lot = if (acc.lotMode == "fixed") {
+            LotCalculator.finish(acc.fixedLot, spec.minVolume, spec.maxVolume, spec.volumeStep, true, acc.maxLot, "fixed lot")
         } else {
             val info = api.accountInfo()
             LotCalculator.riskLots(
-                info.equity, prefs.riskPercent, riskEntry, signal.stopLoss, spec.tickSize, price.lossTickValue,
-                spec.minVolume, spec.maxVolume, spec.volumeStep, prefs.useMinLot, prefs.maxLot,
+                info.equity, acc.riskPercent, riskEntry, signal.stopLoss, spec.tickSize, price.lossTickValue,
+                spec.minVolume, spec.maxVolume, spec.volumeStep, acc.useMinLot, acc.maxLot,
             )
         }
         if (!lot.ok || lot.lots <= 0) throw SkipException(lot.note)
 
-        return TradePlan(signal, sym, action, lot.lots, openPrice, signal.stopLoss, tp, market, spec.digits, lot.note)
+        return TradePlan(signal, acc, sym, decision.actionType, lot.lots, decision.openPrice, signal.stopLoss, tp, market, spec.digits, lot.note, decision.note)
     }
 
     suspend fun execute(plan: TradePlan): TradeResult {
@@ -290,9 +354,14 @@ class SignalProcessor(private val app: App) {
             .put("takeProfit", round(plan.takeProfit, plan.digits))
             .put("comment", "TG2MT5")
         plan.openPrice?.let { body.put("openPrice", round(it, plan.digits)) }
-        return client().trade(body)
+        return client(plan.account).trade(body)
     }
 
     private fun round(v: Double, digits: Int) =
         BigDecimal(v).setScale(digits.coerceIn(0, 8), RoundingMode.HALF_UP).toDouble()
+
+    companion object {
+        /** Alerts for signals older than this are not sent (they arrived while the phone was offline). */
+        const val ALERT_MAX_AGE_SEC = 10 * 60L
+    }
 }

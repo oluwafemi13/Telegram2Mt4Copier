@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -45,7 +46,8 @@ fun ActivityScreen(app: App, modifier: Modifier) {
         else -> entries
     }
 
-    LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    androidx.compose.foundation.layout.Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+    LazyColumn(Modifier.widthIn(max = 880.dp).fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         item {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -62,6 +64,7 @@ fun ActivityScreen(app: App, modifier: Modifier) {
         }
         items(shown) { ActivityRow(it) }
         item { Gap(16) }
+    }
     }
 
     if (confirmClear) {

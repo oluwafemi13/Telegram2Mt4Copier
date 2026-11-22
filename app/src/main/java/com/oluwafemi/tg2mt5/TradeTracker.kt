@@ -18,17 +18,21 @@ data class TrackedTrade(
     val pending: Boolean,
     val openedAt: Long,
     val source: String,
+    val accountId: String = "",   // which MT5 account (empty = placed by version 1.x, single account)
+    val accountName: String = "",
 ) {
     val direction get() = if (isBuy) "BUY" else "SELL"
 
     fun toJson(): JSONObject = JSONObject()
         .put("id", positionId).put("sym", symbol).put("buy", isBuy).put("vol", volume)
         .put("sl", stopLoss).put("tp", takeProfit).put("pend", pending).put("at", openedAt).put("src", source)
+        .put("acc", accountId).put("accn", accountName)
 
     companion object {
         fun fromJson(o: JSONObject) = TrackedTrade(
             o.getString("id"), o.getString("sym"), o.getBoolean("buy"), o.getDouble("vol"),
             o.getDouble("sl"), o.getDouble("tp"), o.optBoolean("pend"), o.getLong("at"), o.optString("src"),
+            o.optString("acc"), o.optString("accn"),
         )
     }
 }
@@ -85,7 +89,8 @@ object TradeResults {
         }
         val word = if (o.isWin) "WIN" else if (o.netProfit == 0.0) "BREAKEVEN" else "LOSS"
         val title = "$word: ${o.reason.label} · ${trade.symbol} ${trade.direction} ${fmt(trade.volume)} lots · $money"
-        val detail = "Closed at ${fmt(o.closePrice)} (SL ${fmt(trade.stopLoss)}, TP ${fmt(trade.takeProfit)}). Signal from ${trade.source}."
+        val acc = if (trade.accountName.isNotBlank()) " on ${trade.accountName}" else ""
+        val detail = "Closed at ${fmt(o.closePrice)} (SL ${fmt(trade.stopLoss)}, TP ${fmt(trade.takeProfit)})$acc. Signal from ${trade.source}."
         return kind to "$title\n$detail"
     }
 }

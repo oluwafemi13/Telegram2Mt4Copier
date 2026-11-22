@@ -99,6 +99,24 @@ class MetaApiClient(private val token: String, private val accountId: String, re
         }
     }
 
+    // ---- Account management (MetaApi provisioning API) ----
+    private val provisioning = "https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts/${enc(accountId)}"
+
+    /** Whether the account is deployed and connected to the broker, plus its region, login and server. */
+    suspend fun accountStatus(): MetaStatus {
+        val o = request(Request.Builder().url(provisioning).get())
+        return MetaStatus(
+            state = o.optString("state"), connection = o.optString("connectionStatus"), region = o.optString("region"),
+            login = o.opt("login")?.toString() ?: "", server = o.optString("server"), checkedAt = System.currentTimeMillis(),
+        )
+    }
+
+    /** Switches the account on in MetaApi (hosting is billed while deployed). */
+    suspend fun deploy() { request(Request.Builder().url("$provisioning/deploy").post(ByteArray(0).toRequestBody(null))) }
+
+    /** Switches the account off in MetaApi (stops hosting charges; trading stops). */
+    suspend fun undeploy() { request(Request.Builder().url("$provisioning/undeploy").post(ByteArray(0).toRequestBody(null))) }
+
     private suspend fun get(path: String) = request(Request.Builder().url(base + path).get())
 
     private suspend fun requestText(builder: Request.Builder): String = withContext(Dispatchers.IO) {

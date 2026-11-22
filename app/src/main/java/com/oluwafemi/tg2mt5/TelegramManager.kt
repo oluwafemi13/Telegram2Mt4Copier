@@ -124,6 +124,7 @@ class TelegramManager(private val app: App) {
 
     private fun publishChats() {
         val order = mapOf("Channel" to 0, "Group" to 1, "Private" to 2)
+        app.setups.updateTitles(knownChats.mapValues { it.value.title })
         _chats.value = knownChats.values.map { ChatItem(it.id, it.title, kindOf(it.type)) }
             .sortedWith(compareBy({ order[it.kind] ?: 3 }, { it.title.lowercase(Locale.ROOT) }))
     }
@@ -144,15 +145,15 @@ class TelegramManager(private val app: App) {
             is TdApi.UpdateChatTitle -> knownChats[obj.chatId]?.let { it.title = obj.title; publishChats() }
             is TdApi.UpdateNewMessage -> onMessage(obj.message)
             is TdApi.UpdateDeleteMessages ->
-                if (obj.isPermanent && !obj.fromCache && obj.chatId in app.prefs.channelIds) app.processor.onDeleted(obj.chatId, obj.messageIds)
+                if (obj.isPermanent && !obj.fromCache && obj.chatId in app.setups.channelIds()) app.processor.onDeleted(obj.chatId, obj.messageIds)
             is TdApi.UpdateMessageContent ->
-                if (obj.chatId in app.prefs.channelIds) textOf(obj.newContent)?.let { app.processor.onEdited(obj.chatId, obj.messageId, it) }
+                if (obj.chatId in app.setups.channelIds()) textOf(obj.newContent)?.let { app.processor.onEdited(obj.chatId, obj.messageId, it) }
             else -> {}
         }
     }
 
     private fun onMessage(m: TdApi.Message) {
-        if (m.chatId !in app.prefs.channelIds) return
+        if (m.chatId !in app.setups.channelIds()) return
         val text = textOf(m.content)
         if (text.isNullOrBlank()) return
         val age = System.currentTimeMillis() / 1000 - m.date

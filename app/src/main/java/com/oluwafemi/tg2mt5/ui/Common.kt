@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -61,7 +63,7 @@ fun Section(title: String, content: @Composable ColumnScope.() -> Unit) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Gold)
+            if (title.isNotBlank()) Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Gold)
             content()
         }
     }
@@ -106,6 +108,10 @@ fun Choice(options: List<Pair<String, String>>, selected: String, onSelect: (Str
 
 @Composable
 fun Gap(h: Int = 8) = Spacer(Modifier.height(h.dp))
+
+/** Horizontal space inside a Row. */
+@Composable
+fun HGap(w: Int = 8) = Spacer(Modifier.width(w.dp))
 
 /** A small coloured label, e.g. "TP hit" or "Deleted". */
 @Composable
@@ -156,5 +162,101 @@ fun ScreenTitle(title: String, subtitle: String = "", onBack: (() -> Unit)? = nu
         }
         Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
         if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Muted)
+    }
+}
+
+/** A scrolling page whose content stays a comfortable width on tablets and in landscape. */
+@Composable
+fun Page(modifier: Modifier, content: @Composable ColumnScope.() -> Unit) {
+    androidx.compose.foundation.layout.Box(modifier.fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
+        Column(
+            Modifier.widthIn(max = 880.dp).fillMaxWidth()
+                .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                .padding(horizontal = 16.dp),
+            content = content,
+        )
+    }
+}
+
+/** Lays cards out in one column on phones and two on wider screens. */
+@Composable
+fun <T> AdaptiveGrid(items: List<T>, minCardWidth: Int = 340, card: @Composable (T) -> Unit) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val cols = maxOf(1, (maxWidth.value / minCardWidth).toInt()).coerceAtMost(2)
+        Column {
+            items.chunked(cols).forEach { row ->
+                androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    row.forEach { androidx.compose.foundation.layout.Box(Modifier.weight(1f)) { card(it) } }
+                    repeat(cols - row.size) { androidx.compose.foundation.layout.Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+}
+
+/** A title and explanation on the left, a switch on the right. */
+@Composable
+fun SwitchRow(title: String, subtitle: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    androidx.compose.foundation.layout.Row(
+        Modifier.fillMaxWidth().clickable(enabled = enabled) { onChange(!checked) }.padding(vertical = 6.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface else Muted)
+            if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Muted)
+        }
+        androidx.compose.material3.Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+    }
+}
+
+/** Coloured dot + text showing whether MetaApi is linked and running for an account. */
+@Composable
+fun StatusBadge(status: com.oluwafemi.tg2mt5.MetaStatus) {
+    val color = when (status.level) {
+        com.oluwafemi.tg2mt5.MetaStatus.Level.RUNNING -> GoodGreen
+        com.oluwafemi.tg2mt5.MetaStatus.Level.STARTING, com.oluwafemi.tg2mt5.MetaStatus.Level.BROKER -> Gold
+        com.oluwafemi.tg2mt5.MetaStatus.Level.PAUSED, com.oluwafemi.tg2mt5.MetaStatus.Level.UNKNOWN -> Muted
+        com.oluwafemi.tg2mt5.MetaStatus.Level.ERROR -> BadRed
+    }
+    androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        androidx.compose.foundation.layout.Box(
+            Modifier.padding(end = 6.dp).height(10.dp).width(10.dp)
+                .background(color, androidx.compose.foundation.shape.CircleShape),
+        )
+        Text(status.level.label, color = color, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** A list of choices shown as radio rows, each with a short explanation. */
+@Composable
+fun RadioList(options: List<Triple<String, String, String>>, selected: String, onSelect: (String) -> Unit, disabled: Map<String, String> = emptyMap()) {
+    Column {
+        options.forEach { (value, title, sub) ->
+            val off = disabled[value]
+            androidx.compose.foundation.layout.Row(
+                Modifier.fillMaxWidth().clickable(enabled = off == null) { onSelect(value) }.padding(vertical = 4.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                androidx.compose.material3.RadioButton(selected = selected == value, onClick = { onSelect(value) }, enabled = off == null)
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.bodyLarge, color = if (off == null) MaterialTheme.colorScheme.onSurface else Muted)
+                    val s = off ?: sub
+                    if (s.isNotBlank()) Text(s, style = MaterialTheme.typography.bodySmall, color = if (off != null) Gold else Muted)
+                }
+            }
+        }
+    }
+}
+
+/** A short numbered heading inside a form, e.g. "2  Link MetaApi". */
+@Composable
+fun StepTitle(number: Int, title: String) {
+    androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        androidx.compose.foundation.layout.Box(
+            Modifier.height(26.dp).width(26.dp).background(Gold, androidx.compose.foundation.shape.CircleShape),
+            contentAlignment = androidx.compose.ui.Alignment.Center,
+        ) { Text("$number", color = Color(0xFF1B1400), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge) }
+        Text(title, modifier = Modifier.padding(start = 10.dp), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Gold)
     }
 }

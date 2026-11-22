@@ -1,5 +1,8 @@
 package com.oluwafemi.tg2mt5
 
+/** The order type a signal asks for. AUTO = a price was given but no order type word. */
+enum class OrderKind(val label: String) { MARKET("market"), LIMIT("limit"), STOP("stop"), AUTO("") }
+
 /** A trade signal read from a Telegram message. Prices are as written in the signal. */
 data class Signal(
     val symbol: String,
@@ -7,11 +10,18 @@ data class Signal(
     val entry: Double?,          // null when the signal says "buy now" without a price
     val stopLoss: Double,
     val takeProfits: List<Double>,
+    val kind: OrderKind = if (entry == null) OrderKind.MARKET else OrderKind.AUTO,
 ) {
     val direction: String get() = if (isBuy) "BUY" else "SELL"
+    /** e.g. "SELL LIMIT", "BUY", "BUY STOP" */
+    val orderName: String get() = when (kind) {
+        OrderKind.LIMIT -> "$direction LIMIT"
+        OrderKind.STOP -> "$direction STOP"
+        else -> direction
+    }
     fun summary(): String {
         val tps = takeProfits.joinToString(" / ") { fmt(it) }
-        return "$symbol $direction ${entry?.let { "@ ${fmt(it)}" } ?: "now"}  TP $tps  SL ${fmt(stopLoss)}"
+        return "$symbol $orderName ${entry?.let { "@ ${fmt(it)}" } ?: "now"}  TP $tps  SL ${fmt(stopLoss)}"
     }
 }
 
@@ -41,7 +51,32 @@ object SignalParser {
     private val currencies = setOf("USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "SGD", "HKD", "ZAR", "MXN", "NOK", "SEK", "TRY", "PLN")
 
     private const val NUM = "([0-9]+(?:[.,][0-9]+)?)"
-    private val directionRe = Regex("""\b(BUY|SELL)\b(?:\s*(?:LIMIT|STOP|NOW|NEAR|ZONE|AT|@|MARKET))*\s*[:@=\-]?\s*$NUM?""")
+    private val directionRe = Regex("""\b(BUY|SELL)\b((?:\s*(?:LIMIT|STOP|NOW|NEAR|ZONE|AT|@|MARKET))*)\s*[:@=\-]?\s*$NUM?""")
+    private val entryRe = Regex("""@\s*[:=\-]?\s*$NUM""")
+
+    /**
+     * Rewrites a channel's own words into the standard words the parser reads, in one pass so a
+     * replaced word is never replaced again. E.g. with SL = "stoploss, s/l" and Buy stop = "buy above",
+     * "Buy above 4050, s/l 4040" becomes "BUY STOP 4050, SL 4040".
+     */
+    fun normalize(upperText: String, w: SignalWords): String {
+        val pairs = mutableListOf<Pair<String, String>>()
+        fun add(list: String, canon: String) = list.split(',').map { it.trim().uppercase() }.filter { it.isNotEmpty() }.forEach { pairs += it to canon }
+        add(w.buyLimit, "BUY LIMIT"); add(w.sellLimit, "SELL LIMIT"); add(w.buyStop, "BUY STOP"); add(w.sellStop, "SELL STOP")
+        add(w.stopLoss, "SL"); add(w.takeProfit, "TP"); add(w.entry, "@"); add(w.market, "NOW"); add(w.buy, "BUY"); add(w.sell, "SELL")
+        if (pairs.isEmpty()) return upperText
+        val byPhrase = LinkedHashMap<String, String>()
+        pairs.sortedByDescending { it.first.length }.forEach { if (it.first !in byPhrase) byPhrase[it.first] = it.second }
+        val alternation = byPhrase.keys.joinToString("|") { phrase ->
+            phrase.split(Regex("\\s+")).joinToString("""\s*""") { Regex.escape(it) }
+        }
+        // A digit may follow (TP1, TARGET2), a letter may not (so "BUY" doesn't match "BUYER").
+        val re = Regex("""(?<![A-Z0-9])(?:$alternation)(?![A-Z])""")
+        return re.replace(upperText) { m ->
+            val key = m.value.replace(Regex("\\s+"), " ")
+            " " + (byPhrase[key] ?: byPhrase.entries.firstOrNull { it.key.replace(" ", "") == key.replace(" ", "") }?.value ?: m.value) + " "
+        }
+    }
     private val tpRe = Regex("""\b(?:TP|TAKE\s*PROFIT)\s*(?:[0-9](?![0-9.,]))?\s*[:@=\-]?\s*$NUM""")
     private val slRe = Regex("""\b(?:SL|STOP\s*LOSS)\s*[:@=\-]?\s*$NUM""")
     private val outcomeRe = Regex("""\b(HIT|HITTED|SMASHED|CLOSED|PIPS|BOOM|RUNNING|SECURED|STOPPED|STOP OUT|STOPPED OUT|TRIGGERED|LOSS|LOST|PROFIT|BREAKEVEN|BE)\b|✅|❌|🎯|💰|🔴|🛑|⛔|💔|😔|😞""")
@@ -65,11 +100,12 @@ object SignalParser {
 
     private val resultWordRe = Regex("""\b(TP|SL|TAKE PROFIT|STOP LOSS|PIPS|LOSS|LOST|PROFIT|STOPPED|BREAKEVEN)\b""")
 
-    fun parse(raw: String): ParseResult {
+    fun parse(raw: String, words: SignalWords = SignalWords.DEFAULT): ParseResult {
         // Upper-case and drop emojis/other symbols, but keep the original for the outcome check.
-        val text = raw.uppercase()
+        val cleaned = raw.uppercase()
             .replace(Regex("""[^\x20-\x7E\n]"""), " ")
             .replace(Regex("""[ \t]+"""), " ")
+        val text = normalize(cleaned, words).replace(Regex("""[ \t]+"""), " ")
 
         val dir = directionRe.find(text)
         val tps = tpRe.findAll(text).map { num(it.groupValues[1]) }.toList()
@@ -87,14 +123,23 @@ object SignalParser {
 
         val symbol = findSymbol(text) ?: return ParseResult.Invalid("Could not find the symbol")
         val isBuy = dir.groupValues[1] == "BUY"
-        val entry = dir.groupValues[2].takeIf { it.isNotEmpty() }?.let { num(it) }
+        val entry = dir.groupValues[3].takeIf { it.isNotEmpty() }?.let { num(it) }
+            ?: entryRe.find(text)?.let { num(it.groupValues[1]) }
+        val modifiers = dir.groupValues[2]
+        val kind = when {
+            modifiers.contains("LIMIT") -> OrderKind.LIMIT
+            modifiers.contains("STOP") -> OrderKind.STOP
+            modifiers.contains("NOW") || modifiers.contains("MARKET") || entry == null -> OrderKind.MARKET
+            else -> OrderKind.AUTO
+        }
+        if ((kind == OrderKind.LIMIT || kind == OrderKind.STOP) && entry == null) return ParseResult.Invalid("$kind order has no entry price")
 
         // Basic sanity: SL must be on the losing side, TPs on the winning side.
         val ref = entry ?: (tps.first() + sl) / 2
         if (isBuy && !(sl < ref && tps.all { it > ref })) return ParseResult.Invalid("BUY levels don't make sense (SL must be below entry, TP above)")
         if (!isBuy && !(sl > ref && tps.all { it < ref })) return ParseResult.Invalid("SELL levels don't make sense (SL must be above entry, TP below)")
 
-        return ParseResult.Trade(Signal(symbol, isBuy, entry, sl, tps))
+        return ParseResult.Trade(Signal(symbol, isBuy, entry, sl, tps, kind))
     }
 
     private fun num(s: String) = s.replace(',', '.').toDouble()

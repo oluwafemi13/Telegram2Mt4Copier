@@ -23,17 +23,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.oluwafemi.tg2mt5.ui.AccountScreen
 import com.oluwafemi.tg2mt5.ui.ActivityScreen
+import com.oluwafemi.tg2mt5.ui.AddChannelScreen
 import com.oluwafemi.tg2mt5.ui.AppTheme
+import com.oluwafemi.tg2mt5.ui.ChannelEditScreen
 import com.oluwafemi.tg2mt5.ui.ChannelScreen
-import com.oluwafemi.tg2mt5.ui.HomeScreen
+import com.oluwafemi.tg2mt5.ui.OverviewScreen
 import com.oluwafemi.tg2mt5.ui.SetupPage
 import com.oluwafemi.tg2mt5.ui.SetupScreen
 
-/** Where the user is: a bottom tab, and on the Setup tab optionally one setup page. */
+/**
+ * Where the user is: a bottom tab, plus optionally a page on top of it.
+ * Pages: "account:<id>", "account:new", "account:new:<chatId>", "channel:<chatId>", "addchannel",
+ * and the setup pages "telegram", "metaapi", "alerts", "backup", "test".
+ */
 object Nav {
-    const val HOME = "home"
-    const val CHANNEL = "channel"
+    const val OVERVIEW = "overview"
+    const val RESULTS = "results"
     const val ACTIVITY = "activity"
     const val SETUP = "setup"
 }
@@ -48,25 +55,25 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AppTheme {
-                var tab by rememberSaveable { mutableStateOf(Nav.HOME) }
+                var tab by rememberSaveable { mutableStateOf(Nav.OVERVIEW) }
                 var page by rememberSaveable { mutableStateOf<String?>(null) }
-                val open: (String, String?) -> Unit = { t, p -> tab = t; page = p }
+                val go: (String?) -> Unit = { page = it }
 
-                BackHandler(enabled = page != null || tab != Nav.HOME) {
-                    if (page != null) page = null else tab = Nav.HOME
+                BackHandler(enabled = page != null || tab != Nav.OVERVIEW) {
+                    if (page != null) page = null else tab = Nav.OVERVIEW
                 }
 
                 Scaffold(
                     bottomBar = {
                         NavigationBar {
                             listOf(
-                                Triple(Nav.HOME, "Home", Icons.Filled.Home),
-                                Triple(Nav.CHANNEL, "Channel", Icons.Filled.Star),
+                                Triple(Nav.OVERVIEW, "Overview", Icons.Filled.Home),
+                                Triple(Nav.RESULTS, "Results", Icons.Filled.Star),
                                 Triple(Nav.ACTIVITY, "Activity", Icons.Filled.DateRange),
                                 Triple(Nav.SETUP, "Setup", Icons.Filled.Settings),
                             ).forEach { (id, label, icon) ->
                                 NavigationBarItem(
-                                    selected = tab == id,
+                                    selected = tab == id && page == null,
                                     onClick = { tab = id; page = null },
                                     icon = { Icon(icon, contentDescription = label) },
                                     label = { Text(label) },
@@ -76,11 +83,22 @@ class MainActivity : ComponentActivity() {
                     },
                 ) { padding ->
                     val m = Modifier.padding(padding)
-                    when (tab) {
-                        Nav.HOME -> HomeScreen(app, m, open)
-                        Nav.CHANNEL -> ChannelScreen(app, m, open)
-                        Nav.ACTIVITY -> ActivityScreen(app, m)
-                        else -> page?.let { SetupPage(app, m, it) { page = null } } ?: SetupScreen(app, m) { page = it }
+                    val p = page
+                    when {
+                        p == null -> when (tab) {
+                            Nav.OVERVIEW -> OverviewScreen(app, m, go)
+                            Nav.RESULTS -> ChannelScreen(app, m, go)
+                            Nav.ACTIVITY -> ActivityScreen(app, m)
+                            else -> SetupScreen(app, m, go)
+                        }
+                        p.startsWith("account:") -> {
+                            val parts = p.split(":")
+                            val id = parts.getOrNull(1) ?: "new"
+                            AccountScreen(app, m, if (id == "new") null else id, parts.getOrNull(2)?.toLongOrNull(), go) { page = null }
+                        }
+                        p.startsWith("channel:") -> ChannelEditScreen(app, m, p.removePrefix("channel:").toLong(), go) { page = null }
+                        p == "addchannel" -> AddChannelScreen(app, m, go) { page = null }
+                        else -> SetupPage(app, m, p, go) { page = null }
                     }
                 }
             }

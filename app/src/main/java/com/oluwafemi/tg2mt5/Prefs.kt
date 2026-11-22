@@ -72,6 +72,28 @@ class Prefs(context: Context) {
         return symbolPrefix + symbol + symbolSuffix
     }
 
+    /** The single-account settings of version 1.x, used once to set up the first channel and MT5 account. */
+    fun oldSettings() = Migration.OldSettings(
+        channelIds, mode, metaAccountId, metaRegion, accountType, centFactor, lotMode, fixedLot, riskPercent,
+        maxLot, useMinLot, symbolPrefix, symbolSuffix, symbolMap, orderType, tpChoice, maxDistance, maxAgeMinutes,
+    )
+
+    /** All settings as a map, for Backup & restore. */
+    fun exportAll(): Map<String, *> = p.all
+
+    fun importAll(values: Map<String, Any?>) {
+        val e = p.edit().clear()
+        for ((k, v) in values) when (v) {
+            is Boolean -> e.putBoolean(k, v)
+            is Int -> e.putInt(k, v)
+            is Long -> e.putLong(k, v)
+            is Float -> e.putFloat(k, v)
+            is String -> e.putString(k, v)
+            is Set<*> -> e.putStringSet(k, v.map { it.toString() }.toSet())
+        }
+        e.apply()
+    }
+
     fun wasProcessed(key: String): Boolean = key in str("processed", "").split(',')
 
     // Duplicate protection: remember the last 500 processed messages.

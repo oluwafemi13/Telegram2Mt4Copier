@@ -16,9 +16,27 @@ android {
         minSdk = 24
         targetSdk = 34
         versionCode = buildNumber
-        versionName = "1.0.$buildNumber"
+        versionName = "2.0.$buildNumber"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
+    }
+
+    // Two versions of the app from the same code, installable side by side:
+    //  flexible: one channel can feed many MT5 accounts (updates the existing app, keeps its data)
+    //  pairs:    each channel is paired with exactly one MT5 account (separate app)
+    flavorDimensions += "links"
+    productFlavors {
+        create("flexible") {
+            dimension = "links"
+            buildConfigField("boolean", "STRICT_PAIRS", "false")
+            resValue("string", "app_name", "TG2MT5 Copier")
+        }
+        create("pairs") {
+            dimension = "links"
+            applicationIdSuffix = ".pairs"
+            buildConfigField("boolean", "STRICT_PAIRS", "true")
+            resValue("string", "app_name", "TG2MT5 Pairs")
         }
     }
 

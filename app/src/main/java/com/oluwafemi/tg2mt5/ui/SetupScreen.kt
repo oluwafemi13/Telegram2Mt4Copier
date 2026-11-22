@@ -116,7 +116,7 @@ fun MetaApiScreen(app: App, modifier: Modifier, go: (String?) -> Unit, onBack: (
             ) { verify = it; p.verifyPrices = it }
         }
         Section("Cost") {
-            Hint("MetaApi is pay-as-you-go: about \$0.0126 per hour per account on High reliability (cloud-g2), roughly \$9 a month, plus \$2.10 once when you add an account. Prices are set by MetaApi and can change; check Billing › View rates in your MetaApi dashboard. The 'Pay for and connect MetaApi' guide explains it step by step.")
+            Hint("MetaApi is pay-as-you-go: you pay per hour for each deployed (running) account, plus a one-time fee when you add an account. Your exact prices are on Billing › View rates in your MetaApi dashboard. Pausing (undeploying) an account stops its hosting charge. The 'Pay for and connect MetaApi' guide explains it step by step.")
         }
         Gap(16)
     }

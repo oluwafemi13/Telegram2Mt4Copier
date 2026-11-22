@@ -78,7 +78,7 @@ class ScreenShots {
 /** The same Overview on a tablet in landscape, to check the two-column layout. */
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w1000dp-h700dp-land-xhdpi")
+@Config(sdk = [34], qualifiers = "w1000dp-h1500dp-xhdpi")
 class TabletShots {
     @Test
     fun overviewTablet() {

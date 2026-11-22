@@ -80,51 +80,50 @@ fun OverviewScreen(app: App, modifier: Modifier, go: (String?) -> Unit) {
             else "Flexible version: one channel can feed several MT5 accounts",
         )
 
-        // 1. Master switch
-        Card(
-            Modifier.fillMaxWidth().padding(vertical = 6.dp),
-            colors = CardDefaults.cardColors(containerColor = if (running) Color(0xFF123B2C) else MaterialTheme.colorScheme.surface),
-        ) {
-            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                val copying = accounts.count { it.copyOn && it.channelId != null }
-                val alerting = channels.count { it.alerts }
-                Text(if (running) "Copier is ON" else "Copier is OFF", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
-                    color = if (running) GoodGreen else MaterialTheme.colorScheme.onSurface)
-                Text(
-                    if (running) "Alerts on for $alerting channel(s). Copying trades to $copying MT5 account(s)."
-                    else "Nothing is alerted or copied. Signals are still recorded on the Results tab.",
-                    color = Muted, style = MaterialTheme.typography.bodyMedium,
-                )
-                Button(
-                    onClick = {
-                        if (running) {
-                            CopierService.stop(context); p.copierEnabled = false; running = false; app.log.add("info", "Copier turned off")
-                        } else {
-                            p.copierEnabled = true; CopierService.start(context); running = true; app.log.add("info", "Copier turned on")
+        // 1. Master switch and setup checklist: side by side on tablets, stacked on phones
+        val top = listOfNotNull("master", if (!allSet) "checklist" else null)
+        AdaptiveGrid(top, minCardWidth = 420) { which ->
+            when (which) {
+                "master" -> {
+                    Card(
+                        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                        colors = CardDefaults.cardColors(containerColor = if (running) Color(0xFF123B2C) else MaterialTheme.colorScheme.surface),
+                    ) {
+                        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            val copying = accounts.count { it.copyOn && it.channelId != null }
+                            val alerting = channels.count { it.alerts }
+                            Text(if (running) "Copier is ON" else "Copier is OFF", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                                color = if (running) GoodGreen else MaterialTheme.colorScheme.onSurface)
+                            Text(
+                                if (running) "Alerts on for $alerting channel(s). Copying trades to $copying MT5 account(s)."
+                                else "Nothing is alerted or copied. Signals are still recorded on the Results tab.",
+                                color = Muted, style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Button(
+                                onClick = {
+                                    if (running) {
+                                        CopierService.stop(context); p.copierEnabled = false; running = false; app.log.add("info", "Copier turned off")
+                                    } else {
+                                        p.copierEnabled = true; CopierService.start(context); running = true; app.log.add("info", "Copier turned on")
+                                    }
+                                },
+                                enabled = running || (tgReady && channels.isNotEmpty()),
+                                modifier = Modifier.fillMaxWidth().height(52.dp),
+                                colors = if (running) ButtonDefaults.buttonColors(containerColor = BadRed, contentColor = Color.White) else ButtonDefaults.buttonColors(),
+                            ) { Text(if (running) "Turn OFF" else "Turn ON", style = MaterialTheme.typography.titleMedium) }
                         }
-                    },
-                    enabled = running || (tgReady && channels.isNotEmpty()),
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    colors = if (running) ButtonDefaults.buttonColors(containerColor = BadRed, contentColor = Color.White) else ButtonDefaults.buttonColors(),
-                ) { Text(if (running) "Turn OFF" else "Turn ON", style = MaterialTheme.typography.titleMedium) }
-            }
-        }
+                    }
 
-        // 2. How the switches work, in one line each
-        Section("How it works") {
-            Text("• Alert me (per channel): your phone vibrates with each new signal and a suggested lot.", style = MaterialTheme.typography.bodyMedium)
-            Text("• Copy trades (per MT5 account): the signal is placed on that account automatically.", style = MaterialTheme.typography.bodyMedium)
-            Text("• Use one, both, or neither. Turn ON above to start.", style = MaterialTheme.typography.bodyMedium)
-        }
-
-        // 3. Checklist
-        if (!allSet) {
-            Section("Finish setting up") {
-                NavRow("Log in to Telegram", if (tgReady) "Logged in" else "Needed to read your signal channels", tgReady) { go("telegram") }
-                NavRow("Add a signal channel", if (channels.isNotEmpty()) "${channels.size} added" else "Choose the channel that posts signals", channels.isNotEmpty()) { go("addchannel") }
-                NavRow("Save your MetaApi token", if (!needsToken) "Saved" else "Needed to copy trades to MT5", !needsToken) { go("metaapi") }
-                NavRow("Allow notifications", if (notifOk) "Allowed" else "Needed for alerts and vibration", notifOk) { openNotificationSettings(context) }
-                NavRow("Run in the background", if (batteryOk) "Allowed" else "Stops Android pausing the copier", batteryOk) { askBattery(context); batteryOk = true }
+                }
+                else -> {
+                    Section("Finish setting up") {
+                        NavRow("Log in to Telegram", if (tgReady) "Logged in" else "Needed to read your signal channels", tgReady) { go("telegram") }
+                        NavRow("Add a signal channel", if (channels.isNotEmpty()) "${channels.size} added" else "Choose the channel that posts signals", channels.isNotEmpty()) { go("addchannel") }
+                        NavRow("Save your MetaApi token", if (!needsToken) "Saved" else "Needed to copy trades to MT5", !needsToken) { go("metaapi") }
+                        NavRow("Allow notifications", if (notifOk) "Allowed" else "Needed for alerts and vibration", notifOk) { openNotificationSettings(context) }
+                        NavRow("Run in the background", if (batteryOk) "Allowed" else "Stops Android pausing the copier", batteryOk) { askBattery(context); batteryOk = true }
+                    }
+                }
             }
         }
 
@@ -161,6 +160,13 @@ fun OverviewScreen(app: App, modifier: Modifier, go: (String?) -> Unit) {
             OutlinedButton(onClick = { go("account:new") }, modifier = Modifier.weight(1f)) { Text("+ Add MT5 account") }
         }
         if (!anyLinked && accounts.isNotEmpty()) Hint("Tip: open an MT5 account and choose which channel it copies.", Gold)
+        Gap(8)
+        Section("How it works") {
+            Text("• Alert me (per channel): your phone vibrates with each new signal and a suggested lot.", style = MaterialTheme.typography.bodyMedium)
+            Text("• Copy trades (per MT5 account): the signal is placed on that account automatically.", style = MaterialTheme.typography.bodyMedium)
+            Text("• Use one, both, or neither. Turn ON above to start.", style = MaterialTheme.typography.bodyMedium)
+        }
+
         Gap(20)
     }
 }

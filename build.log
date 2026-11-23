@@ -1,0 +1,132 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.9/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:buildKotlinToolingMetadata
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preFlexibleReleaseBuild UP-TO-DATE
+> Task :app:generateFlexibleReleaseBuildConfig
+> Task :app:checkFlexibleReleaseAarMetadata
+> Task :app:generateFlexibleReleaseResValues
+> Task :app:mapFlexibleReleaseSourceSetPaths
+> Task :app:generateFlexibleReleaseResources
+> Task :app:packageFlexibleReleaseResources
+> Task :app:mergeFlexibleReleaseResources
+> Task :app:createFlexibleReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksFlexibleRelease
+> Task :app:parseFlexibleReleaseLocalResources
+> Task :app:processFlexibleReleaseMainManifest
+> Task :app:processFlexibleReleaseManifest
+> Task :app:processFlexibleReleaseManifestForPackage
+> Task :app:javaPreCompileFlexibleRelease
+> Task :app:preFlexibleReleaseUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileFlexibleReleaseUnitTest
+> Task :app:mergeFlexibleReleaseShaders
+> Task :app:compileFlexibleReleaseShaders NO-SOURCE
+> Task :app:generateFlexibleReleaseAssets UP-TO-DATE
+> Task :app:mergeFlexibleReleaseAssets
+> Task :app:extractProguardFiles
+> Task :app:mergeFlexibleReleaseJniLibFolders
+> Task :app:processFlexibleReleaseResources
+> Task :app:mergeFlexibleReleaseNativeLibs
+> Task :app:packageFlexibleReleaseUnitTestForUnitTest
+> Task :app:generateFlexibleReleaseUnitTestConfig
+> Task :app:checkFlexibleReleaseDuplicateClasses
+
+> Task :app:stripFlexibleReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libtdjni.so.
+
+> Task :app:desugarFlexibleReleaseFileDependencies
+> Task :app:mergeFlexibleReleaseStartupProfile
+> Task :app:extractFlexibleReleaseNativeSymbolTables
+> Task :app:mergeFlexibleReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:compressFlexibleReleaseAssets
+> Task :app:mergeFlexibleReleaseArtProfile
+> Task :app:extractFlexibleReleaseVersionControlInfo
+> Task :app:collectFlexibleReleaseDependencies
+> Task :app:sdkFlexibleReleaseDependencyData
+> Task :app:validateSigningFlexibleRelease
+> Task :app:writeFlexibleReleaseAppMetadata
+> Task :app:optimizeFlexibleReleaseResources
+> Task :app:writeFlexibleReleaseSigningConfigVersions
+> Task :app:prePairsReleaseBuild UP-TO-DATE
+> Task :app:generatePairsReleaseBuildConfig
+> Task :app:generatePairsReleaseResValues
+> Task :app:checkPairsReleaseAarMetadata
+> Task :app:mapPairsReleaseSourceSetPaths
+> Task :app:generatePairsReleaseResources
+> Task :app:packagePairsReleaseResources
+> Task :app:parsePairsReleaseLocalResources
+> Task :app:createPairsReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksPairsRelease
+> Task :app:mergePairsReleaseResources
+> Task :app:processPairsReleaseMainManifest
+> Task :app:processPairsReleaseManifest
+> Task :app:javaPreCompilePairsRelease
+> Task :app:processPairsReleaseManifestForPackage
+> Task :app:mergePairsReleaseJniLibFolders
+> Task :app:processPairsReleaseResources
+> Task :app:mergePairsReleaseNativeLibs
+
+> Task :app:stripPairsReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libtdjni.so.
+
+> Task :app:mergeExtDexFlexibleRelease
+> Task :app:extractPairsReleaseNativeSymbolTables
+> Task :app:mergePairsReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:checkPairsReleaseDuplicateClasses
+> Task :app:desugarPairsReleaseFileDependencies
+> Task :app:mergePairsReleaseStartupProfile
+> Task :app:mergePairsReleaseArtProfile
+> Task :app:mergePairsReleaseShaders
+> Task :app:compilePairsReleaseShaders NO-SOURCE
+> Task :app:generatePairsReleaseAssets UP-TO-DATE
+> Task :app:mergePairsReleaseAssets
+> Task :app:compressPairsReleaseAssets
+> Task :app:mergeExtDexPairsRelease
+> Task :app:extractPairsReleaseVersionControlInfo
+> Task :app:collectPairsReleaseDependencies
+> Task :app:sdkPairsReleaseDependencyData
+> Task :app:validateSigningPairsRelease
+> Task :app:optimizePairsReleaseResources
+> Task :app:writePairsReleaseAppMetadata
+> Task :app:writePairsReleaseSigningConfigVersions
+> Task :app:compileFlexibleReleaseKotlin
+> Task :app:compilePairsReleaseKotlin
+> Task :app:compilePairsReleaseJavaWithJavac
+> Task :app:compileFlexibleReleaseJavaWithJavac
+> Task :app:processFlexibleReleaseJavaRes
+> Task :app:bundleFlexibleReleaseClassesToRuntimeJar
+> Task :app:bundleFlexibleReleaseClassesToCompileJar
+> Task :app:generateFlexibleReleaseLintVitalReportModel
+> Task :app:compileFlexibleReleaseUnitTestKotlin
+> Task :app:dexBuilderFlexibleRelease
+> Task :app:compileFlexibleReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processFlexibleReleaseUnitTestJavaRes
+> Task :app:testFlexibleReleaseUnitTest
+> Task :app:mergeFlexibleReleaseGlobalSynthetics
+> Task :app:generatePairsReleaseLintVitalReportModel
+> Task :app:mergeFlexibleReleaseJavaResource
+> Task :app:mergeDexFlexibleRelease
+> Task :app:dexBuilderPairsRelease
+> Task :app:compileFlexibleReleaseArtProfile
+> Task :app:mergeDexPairsRelease
+> Task :app:mergePairsReleaseGlobalSynthetics
+> Task :app:compilePairsReleaseArtProfile
+> Task :app:processPairsReleaseJavaRes
+> Task :app:mergePairsReleaseJavaResource
+> Task :app:packageFlexibleRelease
+> Task :app:createFlexibleReleaseApkListingFileRedirect
+> Task :app:packagePairsRelease
+> Task :app:createPairsReleaseApkListingFileRedirect
+> Task :app:lintVitalAnalyzeFlexibleRelease
+> Task :app:lintVitalAnalyzePairsRelease
+> Task :app:lintVitalReportFlexibleRelease
+> Task :app:lintVitalFlexibleRelease
+> Task :app:assembleFlexibleRelease
+> Task :app:lintVitalReportPairsRelease
+> Task :app:lintVitalPairsRelease
+> Task :app:assemblePairsRelease
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1795442667041.json
+
+BUILD SUCCESSFUL in 1m 34s
+106 actionable tasks: 106 executed

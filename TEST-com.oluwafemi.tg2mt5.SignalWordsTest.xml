@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.oluwafemi.tg2mt5.SignalWordsTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-11-23T14:05:27" hostname="ip-10-0-130-169" time="0.015">
+  <properties/>
+  <testcase name="entryOnItsOwnLine" classname="com.oluwafemi.tg2mt5.SignalWordsTest" time="0.001"/>
+  <testcase name="detectsLimitAndStopOrders" classname="com.oluwafemi.tg2mt5.SignalWordsTest" time="0.005"/>
+  <testcase name="pendingWithoutPriceIsRejected" classname="com.oluwafemi.tg2mt5.SignalWordsTest" time="0.001"/>
+  <testcase name="stopLossWordIsNotMistakenForStopOrder" classname="com.oluwafemi.tg2mt5.SignalWordsTest" time="0.0"/>
+  <testcase name="channelSampleSellAtPrice" classname="com.oluwafemi.tg2mt5.SignalWordsTest" time="0.003"/>
+  <testcase name="replacedWordsAreNotReplacedAgain" classname="com.oluwafemi.tg2mt5.SignalWordsTest" time="0.001"/>
+  <testcase name="channelSampleBuyStopAfterHeadline" classname="com.oluwafemi.tg2mt5.SignalWordsTest" time="0.001"/>
+  <testcase name="originalSignalStillWorksAsMarket" classname="com.oluwafemi.tg2mt5.SignalWordsTest" time="0.002"/>
+  <testcase name="channelSpecificWords" classname="com.oluwafemi.tg2mt5.SignalWordsTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

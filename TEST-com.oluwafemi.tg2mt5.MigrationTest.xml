@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.oluwafemi.tg2mt5.MigrationTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-11-23T14:05:27" hostname="ip-10-0-130-169" time="0.012">
+  <properties/>
+  <testcase name="autoModeBecomesOneCopyingAccount" classname="com.oluwafemi.tg2mt5.MigrationTest" time="0.012"/>
+  <testcase name="alertModeKeepsAlertsAndNoCopying" classname="com.oluwafemi.tg2mt5.MigrationTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

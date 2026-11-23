@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.oluwafemi.tg2mt5.TradeResultTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-23T14:05:27" hostname="ip-10-0-130-169" time="0.012">
+  <properties/>
+  <testcase name="brokerCommentWinsOverPrice" classname="com.oluwafemi.tg2mt5.TradeResultTest" time="0.001"/>
+  <testcase name="manualCloseIsOther" classname="com.oluwafemi.tg2mt5.TradeResultTest" time="0.0"/>
+  <testcase name="closedAtStopLossIsLoss" classname="com.oluwafemi.tg2mt5.TradeResultTest" time="0.009"/>
+  <testcase name="closedAtTakeProfitIsWin" classname="com.oluwafemi.tg2mt5.TradeResultTest" time="0.0"/>
+  <testcase name="stillOpenGivesNull" classname="com.oluwafemi.tg2mt5.TradeResultTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

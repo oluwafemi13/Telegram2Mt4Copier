@@ -55,6 +55,22 @@ class SignalWordsTest {
     }
 
     @Test
+    fun channelSampleSellAtPrice() {
+        val s = trade("Sell XAUUSD @ 3625.5\n\nTP: 3610.5 (153 Pips)\n\nSL: 3633")
+        assertEquals("XAUUSD", s.symbol); assertTrue(!s.isBuy)
+        assertEquals(3625.5, s.entry!!, 1e-9); assertEquals(listOf(3610.5), s.takeProfits); assertEquals(3633.0, s.stopLoss, 1e-9)
+        assertEquals(OrderKind.AUTO, s.kind) // a price but no limit/stop word: market order
+    }
+
+    @Test
+    fun channelSampleBuyStopAfterHeadline() {
+        val s = trade("Gold Buy Setup 📈\n\nBuy Stop: 3504.5\n\nTP: 3525\n\nSL: 3495\n\nSession: London Close")
+        assertEquals("XAUUSD", s.symbol); assertTrue(s.isBuy)
+        assertEquals(OrderKind.STOP, s.kind); assertEquals(3504.5, s.entry!!, 1e-9)
+        assertEquals(listOf(3525.0), s.takeProfits); assertEquals(3495.0, s.stopLoss, 1e-9)
+    }
+
+    @Test
     fun pendingWithoutPriceIsRejected() {
         assertTrue(SignalParser.parse("GOLD BUY LIMIT\nTP 4060\nSL 4030") is ParseResult.Invalid)
     }
@@ -105,6 +121,23 @@ class OrdersTest {
     @Test
     fun barePriceIsMarket() {
         assertEquals("ORDER_TYPE_SELL", Orders.decide(sig(false, OrderKind.AUTO, 4054.5), "follow", 4054.0, 4054.4, 0.0).actionType)
+    }
+}
+
+class PipsTest {
+    @Test
+    fun marketStandardPipSizes() {
+        assertEquals(4.0, Pips.toPrice(40.0, "XAUUSD"), 1e-9)       // 3998 → 4002
+        assertEquals(40.0, Pips.between(3998.0, 4002.0, "XAUUSD"), 1e-9)
+        assertEquals(0.0040, Pips.toPrice(40.0, "EURUSD"), 1e-12)
+        assertEquals(0.40, Pips.toPrice(40.0, "USDJPY"), 1e-12)
+        assertEquals(0.40, Pips.toPrice(40.0, "XAGUSD"), 1e-12)
+    }
+
+    @Test
+    fun oldGoldDollarSettingBecomesPips() {
+        assertEquals(30.0, Pips.fromGoldPrice(3.0), 1e-9)
+        assertEquals(0.0, Pips.fromGoldPrice(0.0), 1e-9)
     }
 }
 

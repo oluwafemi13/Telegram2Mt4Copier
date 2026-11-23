@@ -123,7 +123,7 @@ data class Mt5Account(
     val symbolMap: String = "",
     val orderRule: String = "follow",    // follow (what the signal says) | market (always market)
     val tpChoice: String = "first",      // first | last
-    val maxDistance: Double = 0.0,
+    val maxDistancePips: Double = 0.0,  // skip if price moved more than this many market-standard pips
     val maxAgeMinutes: Double = 3.0,
     val status: MetaStatus = MetaStatus(),
 ) {
@@ -145,7 +145,7 @@ data class Mt5Account(
         put("ch", channelId ?: JSONObject.NULL); put("co", copyOn); put("at", accountType); put("cf", centFactor)
         put("lm", lotMode); put("fl", fixedLot); put("rp", riskPercent); put("ml", maxLot); put("um", useMinLot)
         put("sp", symbolPrefix); put("ss", symbolSuffix); put("sm", symbolMap); put("or", orderRule); put("tc", tpChoice)
-        put("md", maxDistance); put("mx", maxAgeMinutes); put("st", status.toJson())
+        put("mdp", maxDistancePips); put("mx", maxAgeMinutes); put("st", status.toJson())
     }
 
     companion object {
@@ -156,11 +156,34 @@ data class Mt5Account(
                 if (o.isNull("ch") || !o.has("ch")) null else o.getLong("ch"), o.optBoolean("co"), o.optString("at", d.accountType),
                 o.optDouble("cf", d.centFactor), o.optString("lm", d.lotMode), o.optDouble("fl", d.fixedLot), o.optDouble("rp", d.riskPercent),
                 o.optDouble("ml", d.maxLot), o.optBoolean("um", d.useMinLot), o.optString("sp"), o.optString("ss"), o.optString("sm"),
-                o.optString("or", d.orderRule), o.optString("tc", d.tpChoice), o.optDouble("md", d.maxDistance), o.optDouble("mx", d.maxAgeMinutes),
+                o.optString("or", d.orderRule), o.optString("tc", d.tpChoice), if (o.has("mdp")) o.optDouble("mdp") else Pips.fromGoldPrice(o.optDouble("md", 0.0)), o.optDouble("mx", d.maxAgeMinutes),
                 MetaStatus.fromJson(o.optJSONObject("st")),
             )
         }
     }
+}
+
+/** Market-standard pip sizes, so distances can be set in pips. */
+object Pips {
+    /** Gold 0.10, silver 0.01, JPY pairs 0.01, other forex 0.0001, oil 0.01, indices and crypto 1.0. */
+    fun size(symbol: String): Double {
+        val s = symbol.uppercase()
+        return when {
+            s.startsWith("XAU") || s.contains("GOLD") -> 0.1
+            s.startsWith("XAG") || s.contains("SILVER") -> 0.01
+            s.contains("OIL") || s.startsWith("WTI") || s.startsWith("BRENT") -> 0.01
+            s.startsWith("BTC") || s.startsWith("ETH") -> 1.0
+            Regex("""^(US30|NAS100|US100|SPX500|US500|GER40|DE40|UK100|JP225)""").containsMatchIn(s) -> 1.0
+            s.length >= 6 && s.substring(3, 6) == "JPY" -> 0.01
+            else -> 0.0001
+        }
+    }
+
+    fun toPrice(pips: Double, symbol: String) = pips * size(symbol)
+    fun between(a: Double, b: Double, symbol: String) = Math.abs(a - b) / size(symbol)
+
+    /** Version 1.x and early 2.0 stored this distance in gold dollars; convert it to pips. */
+    fun fromGoldPrice(price: Double) = if (price > 0) Math.round(price / 0.1 * 10) / 10.0 else 0.0
 }
 
 /** The rules for which channel an account may link to. Kept pure so it can be unit-tested. */
@@ -296,7 +319,7 @@ object Migration {
                 riskPercent = old.riskPercent, maxLot = old.maxLot, useMinLot = old.useMinLot, symbolPrefix = old.symbolPrefix,
                 symbolSuffix = old.symbolSuffix, symbolMap = old.symbolMap,
                 orderRule = if (old.orderType == "pending") "follow" else "market",
-                tpChoice = old.tpChoice, maxDistance = old.maxDistance, maxAgeMinutes = old.maxAgeMinutes,
+                tpChoice = old.tpChoice, maxDistancePips = Pips.fromGoldPrice(old.maxDistance), maxAgeMinutes = old.maxAgeMinutes,
             ),
         )
         return channels to accounts

@@ -52,7 +52,7 @@ object Orders {
             OrderKind.STOP -> {
                 val passed = if (s.isBuy) ask >= e else bid <= e
                 if (!passed) Decision(if (s.isBuy) "ORDER_TYPE_BUY_STOP" else "ORDER_TYPE_SELL_STOP", e)
-                else if (maxDistance > 0 && abs(market - e) <= maxDistance) mkt.copy(note = "Stop price ${fmt(e)} already passed but within ${fmt(maxDistance)}, so sent as a market order")
+                else if (maxDistance > 0 && abs(market - e) <= maxDistance) mkt.copy(note = "Stop price ${fmt(e)} already passed but within your pip limit, so sent as a market order")
                 else throw SkipException("${s.orderName} price ${fmt(e)} was already passed (price ${fmt(market)})")
             }
             else -> mkt
@@ -318,13 +318,14 @@ class SignalProcessor(private val app: App) {
         if (market <= 0) throw SkipException("No price for $sym (market closed or wrong symbol name?)")
 
         val tp = if (acc.tpChoice == "last") signal.takeProfits.last() else signal.takeProfits.first()
-        val decision = Orders.decide(signal, acc.orderRule, price.bid, price.ask, acc.maxDistance)
+        val maxDistance = Pips.toPrice(acc.maxDistancePips, signal.symbol)
+        val decision = Orders.decide(signal, acc.orderRule, price.bid, price.ask, maxDistance)
         val isMarket = decision.openPrice == null
 
         if (isMarket) {
             signal.entry?.let { entry ->
-                if (acc.maxDistance > 0 && abs(market - entry) > acc.maxDistance && signal.kind != OrderKind.LIMIT)
-                    throw SkipException("price ${fmt(market)} is more than ${fmt(acc.maxDistance)} away from entry ${fmt(entry)}")
+                if (maxDistance > 0 && abs(market - entry) > maxDistance && signal.kind != OrderKind.LIMIT)
+                    throw SkipException("price ${fmt(market)} is ${fmt(Math.round(Pips.between(market, entry, signal.symbol) * 10) / 10.0)} pips from entry ${fmt(entry)}, more than your ${fmt(acc.maxDistancePips)}-pip limit")
             }
             if (signal.isBuy && (market <= signal.stopLoss || market >= tp)) throw SkipException("price ${fmt(market)} is already past SL or TP")
             if (!signal.isBuy && (market >= signal.stopLoss || market <= tp)) throw SkipException("price ${fmt(market)} is already past SL or TP")

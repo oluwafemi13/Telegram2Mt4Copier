@@ -107,7 +107,12 @@ object SignalParser {
             .replace(Regex("""[ \t]+"""), " ")
         val text = normalize(cleaned, words).replace(Regex("""[ \t]+"""), " ")
 
-        val dir = directionRe.find(text)
+        // A message can say BUY/SELL more than once, e.g. "Gold Buy Setup ... Buy Stop: 3504.5".
+        // Prefer the mention that carries an order type (limit/stop), then one with a price, then the first.
+        val dirs = directionRe.findAll(text).toList()
+        val dir = dirs.firstOrNull { it.groupValues[2].contains("LIMIT") || it.groupValues[2].contains("STOP") }
+            ?: dirs.firstOrNull { it.groupValues[3].isNotEmpty() }
+            ?: dirs.firstOrNull()
         val tps = tpRe.findAll(text).map { num(it.groupValues[1]) }.toList()
         val sl = slRe.find(text)?.let { num(it.groupValues[1]) }
 

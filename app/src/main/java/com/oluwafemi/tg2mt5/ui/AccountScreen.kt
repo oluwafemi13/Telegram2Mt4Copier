@@ -59,7 +59,7 @@ fun AccountScreen(app: App, modifier: Modifier, accountId: String?, linkTo: Long
     var symMap by remember { mutableStateOf(original.symbolMap) }
     var orderRule by remember { mutableStateOf(original.orderRule) }
     var tpChoice by remember { mutableStateOf(original.tpChoice) }
-    var maxDist by remember { mutableStateOf(fmt(original.maxDistance)) }
+    var maxDist by remember { mutableStateOf(fmt(original.maxDistancePips)) }
     var maxAge by remember { mutableStateOf(fmt(original.maxAgeMinutes)) }
     var status by remember { mutableStateOf(original.status) }
     var region by remember { mutableStateOf(original.region) }
@@ -74,7 +74,7 @@ fun AccountScreen(app: App, modifier: Modifier, accountId: String?, linkTo: Long
         centFactor = num(centFactor, 0.01).takeIf { it > 0 } ?: 0.01, lotMode = lotMode, fixedLot = num(fixedLot, 0.01),
         riskPercent = num(risk, 1.0), maxLot = num(maxLot, 0.0), useMinLot = useMin, symbolPrefix = prefix.trim(),
         symbolSuffix = suffix.trim(), symbolMap = symMap, orderRule = orderRule, tpChoice = tpChoice,
-        maxDistance = num(maxDist, 0.0), maxAgeMinutes = num(maxAge, 3.0), status = status,
+        maxDistancePips = num(maxDist, 0.0), maxAgeMinutes = num(maxAge, 3.0), status = status,
     )
     fun check() {
         busy = true
@@ -228,8 +228,8 @@ fun AccountScreen(app: App, modifier: Modifier, accountId: String?, linkTo: Long
             )
             Text("Which TP to use when a signal has several", style = MaterialTheme.typography.bodyMedium)
             Choice(listOf("first" to "First TP", "last" to "Last TP"), tpChoice) { tpChoice = it }
-            Field("Skip if price moved this far from entry (0 = never)", maxDist, { maxDist = it }, number = true)
-            Hint("In price units. For gold, 3 = skip if price is more than \$3 away.")
+            Field("Skip if price moved more than (pips, 0 = never)", maxDist, { maxDist = it }, number = true)
+            Hint("Market-standard pips: gold 1 pip = \$0.10 (40 pips = \$4, e.g. 3998 → 4002), EURUSD 1 pip = 0.0001, USDJPY 1 pip = 0.01.")
             Field("Ignore signals older than (minutes)", maxAge, { maxAge = it }, number = true)
         }
 
